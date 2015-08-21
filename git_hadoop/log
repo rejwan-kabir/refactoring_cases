@@ -1,0 +1,732 @@
+commit bff5999d07e9416a22846c849487e509ede55040
+Author: Vinayakumar B <vinayakumarb@apache.org>
+Date:   Thu Jul 2 16:11:50 2015 +0530
+
+    HDFS-8703. Merge refactor of DFSInputStream from ErasureCoding branch (Contributed by Vinayakumar B)
+
+commit de480d6c8945bd8b5b00e8657b7a72ce8dd9b6b5
+Author: Jing Zhao <jing9@apache.org>
+Date:   Fri Jun 26 10:49:01 2015 -0700
+
+    HDFS-8623. Refactor NameNode handling of invalid, corrupt, and under-recovery blocks. Contributed by Zhe Zhang.
+
+commit 49f5d20efe7af7cd7c45d93edad33997a695a746
+Author: Yongjun Zhang <yzhang@cloudera.com>
+Date:   Fri Jun 19 14:06:17 2015 -0700
+
+    HADOOP-12103. Small refactoring of DelegationTokenAuthenticationFilter to allow code sharing. Contributed by Yongjun Zhang.
+
+commit 1c13519e1e7588c3e2974138d37bf3449ca8b3df
+Author: Andrew Wang <wang@apache.org>
+Date:   Thu Jun 18 08:48:09 2015 -0700
+
+    HDFS-8605. Merge Refactor of DFSOutputStream from HDFS-7285 branch. (vinayakumarb)
+
+commit c17439c2ddd921b63b1635e6f1cba634b8da8557
+Author: Andrew Wang <wang@apache.org>
+Date:   Fri Jun 12 11:35:39 2015 -0700
+
+    HDFS-8499. Refactor BlockInfo class hierarchy with static helper class. Contributed by Zhe Zhang.
+
+commit 960b8f19ca98dbcfdd30f2f1f275b8718d2e872f
+Author: Jian He <jianhe@apache.org>
+Date:   Mon Jun 8 14:50:58 2015 -0700
+
+    YARN-2716. Refactor ZKRMStateStore retry code with Apache Curator. Contributed by Karthik Kambatla
+
+commit 8f378733423a5244461df79a92c00239514b8b93
+Author: Jing Zhao <jing9@apache.org>
+Date:   Fri May 15 16:14:54 2015 -0700
+
+    HDFS-8397. Refactor the error handling code in DataStreamer. Contributed by Tsz Wo Nicholas Sze.
+
+commit c55d609053fe24b3a50fbe17dc1b47717b453ed6
+Author: Haohui Mai <wheat9@apache.org>
+Date:   Thu Apr 30 13:41:46 2015 -0700
+
+    HDFS-8200. Refactor FSDirStatAndListingOp. Contributed by Haohui Mai.
+
+commit a287d2fb77d9873b61c6ab24134993d784ae8475
+Author: Ravi Prakash <raviprak@altiscale.com>
+Date:   Fri Apr 24 13:39:07 2015 -0700
+
+    HADOOP-11876. Refactor code to make it more readable, minor maybePrintStats bug (Zoran Dimitrijevic via raviprak)
+
+commit ef4e9963b25d7d2e30f1071ddcaa9d92a7fe70f3
+Author: Tsz-Wo Nicholas Sze <szetszwo@hortonworks.com>
+Date:   Thu Apr 23 14:19:33 2015 -0700
+
+    HDFS-8215. Refactor NamenodeFsck#check method.  Contributed by Takanobu Asanuma
+
+commit 8511d80804de052618168a456a475ee0f7aa6d8c
+Author: Arpit Agarwal <arp@apache.org>
+Date:   Sun Apr 19 16:09:06 2015 -0700
+
+    HDFS-8152. Refactoring of lazy persist storage cases. (Arpit Agarwal)
+
+commit 2cc9514ad643ae49d30524743420ee9744e571bd
+Author: Tsz-Wo Nicholas Sze <szetszwo@hortonworks.com>
+Date:   Fri Apr 10 14:48:45 2015 -0700
+
+    HDFS-8100. Refactor DFSClient.Conf to a standalone class and separates short-circuit related conf to ShortCircuitConf.
+
+commit 5763b173d34dcf7372520076f00b576f493662cd
+Author: cnauroth <cnauroth@apache.org>
+Date:   Thu Apr 2 16:13:00 2015 -0700
+
+    HADOOP-9805. Refactor RawLocalFileSystem#rename for improved testability. Contributed by Jean-Pierre Matsumoto.
+
+commit c66c3ac6bf9f63177279feec3f2917e4b882e2bc
+Author: Karthik Kambatla <kasha@apache.org>
+Date:   Wed Mar 4 14:42:07 2015 -0800
+
+    MAPREDUCE-6267. Refactor JobSubmitter#copyAndConfigureFiles into it's own class. (Chris Trezzo via kasha)
+
+commit 8b465b4b8caed31ca9daeaae108f9a868a30a455
+Author: Arpit Agarwal <arp@apache.org>
+Date:   Sat Feb 21 15:38:35 2015 -0800
+
+    HDFS-7806. Refactor: move StorageType from hadoop-hdfs to hadoop-common. (Contributed by Xiaoyu Yao)
+
+commit 7bc492adab90c4533c20d48c004e92cb917cd199
+Author: Tsuyoshi Ozawa <ozawa@apache.org>
+Date:   Thu Feb 12 23:48:43 2015 +0900
+
+    YARN-3157. Refactor the exception handling in ConverterUtils#to*Id. Contributed by Bibin A Chundatt.
+
+commit 4cbaa74f623ac8ee2c5b7308ac33a807a33e17f7
+Author: Tsuyoshi Ozawa <ozawa@apache.org>
+Date:   Thu Feb 12 18:48:17 2015 +0900
+
+    Revert "YARN-3157. Refactor the exception handling in ConverterUtils#to*Id. Contributed by Bibin A Chundatt."
+    
+    This reverts commit 95a41bf35d8ba0a1ec087f456914231103d98fb9.
+
+commit 95a41bf35d8ba0a1ec087f456914231103d98fb9
+Author: Tsuyoshi Ozawa <ozawa@apache.org>
+Date:   Thu Feb 12 18:39:29 2015 +0900
+
+    YARN-3157. Refactor the exception handling in ConverterUtils#to*Id. Contributed by Bibin A Chundatt.
+
+commit 00a748d24a565bce0cc8cfa2bdcf165778cea395
+Author: Wangda Tan <wangda@apache.org>
+Date:   Mon Feb 9 17:20:25 2015 -0800
+
+    YARN-3155. Refactor the exception handling code for TimelineClientImpl's retryOn method (Li Lu via wangda)
+
+commit 6e62a1a6728b1f782f64065424f92b292c3f163a
+Author: Colin Patrick Mccabe <cmccabe@cloudera.com>
+Date:   Wed Dec 17 11:27:48 2014 -0800
+
+    HDFS-7430. Refactor the BlockScanner to use O(1) memory and use multiple threads (cmccabe)
+
+commit 33ce887c20ec806ace02063e42599c3db76b536a
+Author: Andrew Wang <wang@apache.org>
+Date:   Tue Sep 16 16:29:35 2014 -0700
+
+    HDFS-6851. Refactor EncryptionZoneWithId and EncryptionZone. (clamb via wang)
+
+commit c656d7d6e53436bf082f76e5988e39d8e18ed64f
+Author: Alejandro Abdelnur <tucu@apache.org>
+Date:   Thu Sep 11 13:53:31 2014 -0700
+
+    HADOOP-11083. After refactoring of HTTP proxyuser to common, doAs param is case sensitive. (tucu)
+
+commit 88209ce181b5ecc55c0ae2bceff4893ab4817e88
+Author: Konstantin V Shvachko <shv@apache.org>
+Date:   Sat Sep 6 12:07:52 2014 -0700
+
+    HDFS-6940. Refactoring to allow ConsensusNode implementation.
+    Contributed by Konstantin Shvachko.
+
+commit 4cf9afacbe3d0814fb616d238aa9b16b1ae68386
+Author: arp <arp@apache.org>
+Date:   Thu Aug 28 23:05:32 2014 -0700
+
+    HDFS-6960. Bugfix in LazyWriter, fix test case and some refactoring. (Arpit Agarwal)
+
+commit e91d099c4a4182c25c1a19237aff28e4d1bc1357
+Author: Junping Du <junping_du@apache.org>
+Date:   Sun Aug 10 07:21:15 2014 +0000
+
+    YARN-2302. Refactor TimelineWebServices. (Contributed by Zhijie Shen)
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/trunk@1617055 13f79535-47bb-0310-9956-ffa450edef68
+
+commit be9c67930b57c516723d566625f9036a88a84055
+Author: Alejandro Abdelnur <tucu@apache.org>
+Date:   Fri Aug 8 04:58:58 2014 +0000
+
+    HADOOP-10771. Refactor HTTP delegation support out of httpfs to common, PART 2. (tucu)
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/trunk@1616672 13f79535-47bb-0310-9956-ffa450edef68
+
+commit 4e7c4a6e1fd00767d966cd2482a364b2eacbd35b
+Author: Alejandro Abdelnur <tucu@apache.org>
+Date:   Fri Aug 8 04:55:38 2014 +0000
+
+    HADOOP-10771. Refactor HTTP delegation support out of httpfs to common, PART 1. (tucu)
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/trunk@1616671 13f79535-47bb-0310-9956-ffa450edef68
+
+commit f6c723ff0c09134d721534a409e8d688cc028307
+Author: Jian He <jianhe@apache.org>
+Date:   Tue Jul 22 17:49:14 2014 +0000
+
+    YARN-2295. Refactored DistributedShell to use public APIs of protocol records. Contributed by Li Lu
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/trunk@1612626 13f79535-47bb-0310-9956-ffa450edef68
+
+commit b52b80d7bdcad00b95619544fa869af56746ebf0
+Author: Yi Liu <yliu@apache.org>
+Date:   Tue Jul 22 08:38:38 2014 +0000
+
+    HADOOP-10853. Refactor get instance of CryptoCodec and support create via algorithm/mode/padding. (yliu)
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/branches/fs-encryption@1612513 13f79535-47bb-0310-9956-ffa450edef68
+
+commit 80d7f0911cf42eee001fe1a3d6958b82635df671
+Author: Uma Maheswara Rao G <umamahesh@apache.org>
+Date:   Wed Jul 16 11:24:41 2014 +0000
+
+    HADOOP-10824. Refactor KMSACLs to avoid locking. (Benoy Antony via umamahesh)
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/trunk@1610969 13f79535-47bb-0310-9956-ffa450edef68
+
+commit e67b80ec3a9ebeec613241c8b41fe01358012e38
+Author: Tsz-wo Sze <szetszwo@apache.org>
+Date:   Thu Jul 10 06:16:34 2014 +0000
+
+    HDFS-6643. Refactor INodeWithAdditionalFields.PermissionStatusFormat and INodeFile.HeaderFormat.
+    
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/trunk@1609401 13f79535-47bb-0310-9956-ffa450edef68
+
+commit ceed0f6c46736323bd1b077125ff4e217c649208
+Author: Andrew Wang <wang@apache.org>
+Date:   Tue Jul 8 04:34:04 2014 +0000
+
+    HDFS-6635. Refactor encryption zone functionality into new EncryptionZoneManager class. (wang)
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/branches/fs-encryption@1608657 13f79535-47bb-0310-9956-ffa450edef68
+
+commit b880b48b35cab46459473e17ee6ba9f750f428a7
+Author: Arpit Agarwal <arp@apache.org>
+Date:   Tue Jun 24 17:51:09 2014 +0000
+
+    HADOOP-10652. Refactor Proxyusers to use AccessControlList. (Contributed by Benoy Antony)
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/trunk@1605145 13f79535-47bb-0310-9956-ffa450edef68
+
+commit 08986fdbed5a15bcdc57d142922911759b97e9d1
+Author: Haohui Mai <wheat9@apache.org>
+Date:   Tue Jun 24 06:56:27 2014 +0000
+
+    HDFS-6562. Refactor rename() in FSDirectory. Contributed by Haohui Mai.
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/trunk@1605016 13f79535-47bb-0310-9956-ffa450edef68
+
+commit 214aceb9f707b117b8dacdc4d53224d4445fd78d
+Author: Arpit Agarwal <arp@apache.org>
+Date:   Mon Jun 23 23:15:02 2014 +0000
+
+    HADOOP-10659. Refactor AccessControlList to reuse utility functions and to improve performance. (Contributed by Benoy Antony)
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/trunk@1604955 13f79535-47bb-0310-9956-ffa450edef68
+
+commit f43f0999d9b43ac0f72ffde616dad4e60ff01cd9
+Author: Yi Liu <yliu@apache.org>
+Date:   Sun Jun 22 07:20:47 2014 +0000
+
+    HADOOP-10713. Refactor CryptoCodec#generateSecureRandom to take a byte[]. (wang via yliu)
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/branches/fs-encryption@1604537 13f79535-47bb-0310-9956-ffa450edef68
+
+commit 34e9173c00f7e1ae55dec365850849c793cde8e3
+Author: Arpit Agarwal <arp@apache.org>
+Date:   Thu Jun 12 01:27:39 2014 +0000
+
+    HADOOP-10376. Refactor refresh*Protocols into a single generic refreshConfigProtocol. (Contributed by Chris Li)
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/trunk@1602055 13f79535-47bb-0310-9956-ffa450edef68
+
+commit 001078e0677e39b962ca1da81fc34d7ac9a7e65c
+Author: Zhijie Shen <zjshen@apache.org>
+Date:   Wed May 28 18:09:04 2014 +0000
+
+    YARN-2107. Refactored timeline classes into o.a.h.y.s.timeline package. Contributed by Vinod Kumar Vavilapalli.
+    
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/trunk@1598094 13f79535-47bb-0310-9956-ffa450edef68
+
+commit 00779999721a8ff87a97f274646ab0bc33e0a557
+Author: Suresh Srinivas <suresh@apache.org>
+Date:   Tue May 13 16:53:38 2014 +0000
+
+    HADOOP-10566. Refactor proxyservers out of ProxyUsers. Contributed by Benoy Antony.
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/trunk@1594280 13f79535-47bb-0310-9956-ffa450edef68
+
+commit 9a2ec694fe6f1cf72b60d4f406b010bfa55ff04b
+Author: Alejandro Abdelnur <tucu@apache.org>
+Date:   Wed Apr 9 19:40:32 2014 +0000
+
+    HADOOP-10432. Refactor SSLFactory to expose static method to determine HostnameVerifier. (tucu)
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/trunk@1586098 13f79535-47bb-0310-9956-ffa450edef68
+
+commit d61d1c120d5cecc97514e2f8d79dacdbd4e610a3
+Author: Arpit Agarwal <arp@apache.org>
+Date:   Fri Feb 21 20:53:34 2014 +0000
+
+    HADOOP-10278. Refactor to make CallQueue pluggable. (Contributed by Chris Li)
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/trunk@1570703 13f79535-47bb-0310-9956-ffa450edef68
+
+commit 5c978a43c3052cc1466b23653c354399186b4e10
+Author: Chris Nauroth <cnauroth@apache.org>
+Date:   Mon Feb 10 23:13:06 2014 +0000
+
+    HDFS-5915. Refactor FSImageFormatProtobuf to simplify cross section reads. Contributed by Haohui Mai.
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/trunk@1566824 13f79535-47bb-0310-9956-ffa450edef68
+
+commit 3fd9f29d56da4adc0c651babb5d2f50627c23195
+Author: Chris Nauroth <cnauroth@apache.org>
+Date:   Sat Feb 1 05:55:20 2014 +0000
+
+    HDFS-5860. Refactor INodeDirectory getDirectoryXFeature methods to use common getFeature helper method. Contributed by Jing Zhao.
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/branches/HDFS-4685@1563374 13f79535-47bb-0310-9956-ffa450edef68
+
+commit fa99a8471d6cfabc63d678caa8d4b6614f824be1
+Author: Chris Nauroth <cnauroth@apache.org>
+Date:   Fri Jan 31 23:02:45 2014 +0000
+
+    HDFS-5858. Refactor common ACL test cases to be run through multiple FileSystem implementations. Contributed by Chris Nauroth.
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/branches/HDFS-4685@1563325 13f79535-47bb-0310-9956-ffa450edef68
+
+commit 4c197b5d5669fc3453ffc82b7ea76ab18772ec69
+Author: Konstantin Boudnik <cos@apache.org>
+Date:   Thu Jan 23 22:29:23 2014 +0000
+
+    HADOOP-10167. Mark hadoop-common source as UTF-8 in Maven pom files / refactoring. Contributed by Mikhail Antonov.
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/trunk@1560831 13f79535-47bb-0310-9956-ffa450edef68
+
+commit a31a3a68ead2773f8daa5b3ac1041e271b442789
+Author: Junping Du <junping_du@apache.org>
+Date:   Fri Dec 13 02:47:04 2013 +0000
+
+    HDFS-5652. Refactor invalid block token exception handling in DFSInputStream. (Liang Xie via junping_du)
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/trunk@1550620 13f79535-47bb-0310-9956-ffa450edef68
+
+commit 1387fb1394bb0b7241875b2c19952504aa7f60de
+Author: Jing Zhao <jing9@apache.org>
+Date:   Wed Oct 23 20:48:25 2013 +0000
+
+    HDFS-5363. Refactor WebHdfsFileSystem: move SPENGO-authenticated connection creation to URLConnectionFactory. Contributed by Haohui Mai.
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/trunk@1535169 13f79535-47bb-0310-9956-ffa450edef68
+
+commit 8111c3af6b06d6a814e235ad90af5860632d2c25
+Author: Chris Nauroth <cnauroth@apache.org>
+Date:   Fri Oct 11 19:44:20 2013 +0000
+
+    HDFS-5224. Refactor PathBasedCache* methods to use a Path rather than a String. Contributed by Chris Nauroth.
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/branches/HDFS-4949@1531406 13f79535-47bb-0310-9956-ffa450edef68
+
+commit 5e18410e06dd63113c49029894007e0878312903
+Author: Jing Zhao <jing9@apache.org>
+Date:   Wed Sep 18 06:08:23 2013 +0000
+
+    HDFS-5212. Refactor RpcMessage and NFS3Response to support different types of authentication information. Contributed by Jing Zhao.
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/trunk@1524298 13f79535-47bb-0310-9956-ffa450edef68
+
+commit 613979c8fdacf25fd563395ecc399c4de94d3ee7
+Author: Jing Zhao <jing9@apache.org>
+Date:   Tue Sep 10 19:29:45 2013 +0000
+
+    HDFS-5085. Refactor o.a.h.nfs to support different types of authentications. Contributed by Jing Zhao.
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/trunk@1521601 13f79535-47bb-0310-9956-ffa450edef68
+
+commit 8f8be404a7f476bd376307170f8cff656bf19474
+Author: Bikas Saha <bikas@apache.org>
+Date:   Tue Jul 16 02:40:57 2013 +0000
+
+    Trivial fix for minor refactor error for YARN-521
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/trunk@1503543 13f79535-47bb-0310-9956-ffa450edef68
+
+commit 6735b70b4ab618d4ebfb5a863180d14be9b8b2b2
+Author: Colin McCabe <cmccabe@apache.org>
+Date:   Mon Jul 1 22:09:52 2013 +0000
+
+    HADOOP-9414.  Refactor out FSLinkResolver and relevant helper methods.
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/trunk@1498720 13f79535-47bb-0310-9956-ffa450edef68
+
+commit ead7fa0413fd8aacd6d93697cf398ed17c30930f
+Author: Kihwal Lee <kihwal@apache.org>
+Date:   Mon Jul 1 20:20:27 2013 +0000
+
+    HDFS-4888. Refactor and fix FSNamesystem.getTurnOffTip. Contributed by Ravi Prakash.
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/trunk@1498665 13f79535-47bb-0310-9956-ffa450edef68
+
+commit 6de09af24487e2ff5bc22c7b1a07348c7119de80
+Author: Vinod Kumar Vavilapalli <vinodkv@apache.org>
+Date:   Tue Apr 30 05:44:06 2013 +0000
+
+    YARN-599. Refactoring submitApplication in ClientRMService and RMAppManager to separate out various validation checks depending on whether they rely on RM configuration or not. Contributed by Zhijie Shen.
+    
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/trunk@1477478 13f79535-47bb-0310-9956-ffa450edef68
+
+commit a43c344eee888f2a2488c8c9dca7e25a2cce10bf
+Author: Thomas White <tomwhite@apache.org>
+Date:   Thu Apr 25 08:33:43 2013 +0000
+
+    YARN-595. Refactor fair scheduler to use common Resources. Contributed by Sandy Ryza.
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/trunk@1475670 13f79535-47bb-0310-9956-ffa450edef68
+
+commit 9280468b1acfa346250d0212b5cb7486dc83705c
+Author: Tsz-wo Sze <szetszwo@apache.org>
+Date:   Wed Apr 17 02:41:38 2013 +0000
+
+    HDFS-4550. Refactor INodeDirectory.INodesInPath to a standalone class.
+    
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/branches/HDFS-2802@1468725 13f79535-47bb-0310-9956-ffa450edef68
+
+commit d42d0860cb670c8284bb298029cd6f8f59db9510
+Author: Tsz-wo Sze <szetszwo@apache.org>
+Date:   Thu Feb 14 22:00:36 2013 +0000
+
+    HDFS-4500. Refactor snapshot INode methods.
+    
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/branches/HDFS-2802@1446355 13f79535-47bb-0310-9956-ffa450edef68
+
+commit 6f4fe09687f9d13e3e552eaaa012399a5bf246d3
+Author: Tsz-wo Sze <szetszwo@apache.org>
+Date:   Tue Jan 29 23:25:49 2013 +0000
+
+    HDFS-4447. Refactor INodeDirectoryWithSnapshot for supporting general INode diff lists.
+    
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/branches/HDFS-2802@1440216 13f79535-47bb-0310-9956-ffa450edef68
+
+commit 73fd247c7649919350ecfd16806af57ffe554649
+Author: Alejandro Abdelnur <tucu@apache.org>
+Date:   Tue Jan 22 14:10:42 2013 +0000
+
+    MAPREDUCE-4808. Refactor MapOutput and MergeManager to facilitate reuse by Shuffle implementations. (masokan via tucu)
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/trunk@1436936 13f79535-47bb-0310-9956-ffa450edef68
+
+commit 1b3b09d94794622e8336220d897a1f10c4654677
+Author: Suresh Srinivas <suresh@apache.org>
+Date:   Mon Oct 29 14:11:04 2012 +0000
+
+    HDFS-4124. Refactor INodeDirectory#getExistingPathINodes() to enable returningmore than INode array. Contributed by Jing Zhao.
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/trunk@1403304 13f79535-47bb-0310-9956-ffa450edef68
+
+commit ec94ea265825b1fcb191e93a5435abfd96a2d8bc
+Author: Tsz-wo Sze <szetszwo@apache.org>
+Date:   Thu Aug 30 14:50:18 2012 +0000
+
+    HADOOP-8748. Refactor DFSClient retry utility methods to a new class in org.apache.hadoop.io.retry.  Contributed by Arun C Murthy
+    
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/trunk@1378969 13f79535-47bb-0310-9956-ffa450edef68
+
+commit 8dd3148e734fa9d1db761ce65410fdc49c0fe1d5
+Author: Todd Lipcon <todd@apache.org>
+Date:   Mon Jul 2 23:59:41 2012 +0000
+
+    HDFS-3190. Simple refactors in existing NN code to assist QuorumJournalManager extension. Contributed by Todd Lipcon.
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/trunk@1356525 13f79535-47bb-0310-9956-ffa450edef68
+
+commit d263653ae22217439d1740c936d1c78e1644d73e
+Author: Alejandro Abdelnur <tucu@apache.org>
+Date:   Wed Jun 27 16:06:37 2012 +0000
+
+    HDFS-3481. Refactor HttpFS handling of JAX-RS query string parameters (tucu)
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/trunk@1354599 13f79535-47bb-0310-9956-ffa450edef68
+
+commit 841fdc5628fbba341efe0bfc6763fe12e7fca7f4
+Author: Tsz-wo Sze <szetszwo@apache.org>
+Date:   Fri Apr 13 23:41:01 2012 +0000
+
+    HDFS-3273. Refactor BackupImage and FSEditLog, and rename JournalListener.rollLogs(..) to startLogSegment(..).
+    
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/trunk@1326016 13f79535-47bb-0310-9956-ffa450edef68
+
+commit be7dd8333a7e56e732171db0781786987de03195
+Author: Eli Collins <eli@apache.org>
+Date:   Sun Apr 1 22:12:12 2012 +0000
+
+    HDFS-3144. Refactor DatanodeID#getName by use. Contributed by Eli Collins
+    
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/trunk@1308205 13f79535-47bb-0310-9956-ffa450edef68
+
+commit 543701387fc0054082a17da15e85e9e8f8025801
+Author: Todd Lipcon <todd@apache.org>
+Date:   Fri Mar 30 20:30:47 2012 +0000
+
+    HADOOP-8228. Auto HA: Refactor tests and add stress tests. Contributed by Todd Lipcon.
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/branches/HDFS-3042@1307599 13f79535-47bb-0310-9956-ffa450edef68
+
+commit 840df19ceecca1be26c572da2afe2f4d5f958b24
+Author: Todd Lipcon <todd@apache.org>
+Date:   Mon Mar 26 01:54:14 2012 +0000
+
+    HADOOP-8193. Refactor FailoverController/HAAdmin code to add an abstract class for "target" services. Contributed by Todd Lipcon.
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/trunk@1305195 13f79535-47bb-0310-9956-ffa450edef68
+
+commit 90ea037d21be08821fc9c95b80bec1e1078d79cc
+Author: Todd Lipcon <todd@apache.org>
+Date:   Sat Mar 24 23:48:07 2012 +0000
+
+    HADOOP-8193. Refactor FailoverController/HAAdmin code to add an abstract class for "target" services. Contributed by Todd Lipcon.
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/trunk@1304967 13f79535-47bb-0310-9956-ffa450edef68
+
+commit 736b1860ab7f64de13419c6385534892b1542c1d
+Author: Todd Lipcon <todd@apache.org>
+Date:   Mon Jan 9 04:12:37 2012 +0000
+
+    HDFS-2730. Refactor shared HA-related test code into HATestUtil class. Contributed by Todd Lipcon.
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/branches/HDFS-1623@1229023 13f79535-47bb-0310-9956-ffa450edef68
+
+commit 905a127850d5e0cba85c2e075f989fa0f5cf129a
+Author: Todd Lipcon <todd@apache.org>
+Date:   Fri Nov 18 09:04:20 2011 +0000
+
+    HDFS-2562. Refactor DN configuration variables out of DataNode class. Contributed by Todd Lipcon.
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/trunk@1203543 13f79535-47bb-0310-9956-ffa450edef68
+
+commit 0864ef19089f703232107d8aa26c4a7571ff132e
+Author: Todd Lipcon <todd@apache.org>
+Date:   Fri Nov 18 00:45:31 2011 +0000
+
+    HDFS-2560. Refactor BPOfferService to be a static inner class. Contributed by Todd Lipcon.
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/trunk@1203444 13f79535-47bb-0310-9956-ffa450edef68
+
+commit e90a5b40430cc1fbce075d34b31e3cc05fd9831f
+Author: Suresh Srinivas <suresh@apache.org>
+Date:   Thu Sep 29 04:40:15 2011 +0000
+
+    HDFS-2371. Refactor BlockSender.java for better readability. Contributed by Suresh Srinivas.
+    
+    
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/trunk@1177161 13f79535-47bb-0310-9956-ffa450edef68
+
+commit b0632df93ae5d00180b21983d960d50a45f8fb7a
+Author: Todd Lipcon <todd@apache.org>
+Date:   Tue Sep 6 00:41:47 2011 +0000
+
+    HDFS-2197. Refactor RPC call implementations out of NameNode class. Contributed by Todd Lipcon.
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/trunk@1165463 13f79535-47bb-0310-9956-ffa450edef68
+
+commit 513f17d115564e49124bb744cecf36d16a144ffc
+Author: Tsz-wo Sze <szetszwo@apache.org>
+Date:   Mon Aug 22 22:28:17 2011 +0000
+
+    HDFS-2273.  Refactor BlockManager.recentInvalidateSets to a new class.
+    
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/trunk@1160475 13f79535-47bb-0310-9956-ffa450edef68
+
+commit dd86860633d2ed64705b669a75bf318442ed6225
+Author: Todd Lipcon <todd@apache.org>
+Date:   Thu Aug 18 03:02:19 2011 +0000
+
+    HDFS-2260. Refactor BlockReader into an interface and implementation. Contributed by Todd Lipcon.
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/trunk@1159004 13f79535-47bb-0310-9956-ffa450edef68
+
+commit 23762da4fa17ce6ea7b70722147977123a28a7e6
+Author: Todd Lipcon <todd@apache.org>
+Date:   Thu Aug 4 21:56:17 2011 +0000
+
+    HDFS-2225. Refactor file management so it's not in classes which should be generic. Contributed by Ivan Kelly.
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/trunk@1154029 13f79535-47bb-0310-9956-ffa450edef68
+
+commit 817df4d5d3687a1fa51b5272b7ace57a51fe6643
+Author: Jitendra Nath Pandey <jitendra@apache.org>
+Date:   Thu Jul 28 19:28:18 2011 +0000
+
+    HADOOP-7474. Refactor ClientCache out of WritableRpcEngine. Contributed by jitendra.
+    
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/trunk@1151978 13f79535-47bb-0310-9956-ffa450edef68
+
+commit 44320eed1732ea59bd9ec83009eb10e0e6f13023
+Author: Eli Collins <eli@apache.org>
+Date:   Thu Jul 28 05:46:28 2011 +0000
+
+    HDFS-2212. Refactor double-buffering code out of EditLogOutputStreams. Contributed by Todd Lipcon
+    
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/trunk@1151736 13f79535-47bb-0310-9956-ffa450edef68
+
+commit ffbe9e5972bf3eee9037e2602c1330e0dc744646
+Author: Eli Collins <eli@apache.org>
+Date:   Thu Jul 28 03:19:31 2011 +0000
+
+    HDFS-2195. Refactor StorageDirectory to not be an non-static inner class. Contributed by Todd Lipcon
+    
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/trunk@1151707 13f79535-47bb-0310-9956-ffa450edef68
+
+commit 01cd616d170d5d26a539e51e731e8e73b789b360
+Author: Todd Lipcon <todd@apache.org>
+Date:   Tue Jul 26 00:04:30 2011 +0000
+
+    HDFS-2180. Refactor NameNode HTTP server into new class. Contributed by Todd Lipcon.
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/trunk@1150960 13f79535-47bb-0310-9956-ffa450edef68
+
+commit 77b4fd6572d6f928ea5bd86c8b00caeba7bb3b99
+Author: Todd Lipcon <todd@apache.org>
+Date:   Wed May 25 17:29:20 2011 +0000
+
+    HADOOP-7320. Refactor the copy and move commands to conform to new FsCommand class. Contributed by Daryn Sharp.
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/trunk@1127591 13f79535-47bb-0310-9956-ffa450edef68
+
+commit b04fb035ece4aafef525ec65cbd0ffe9bf70e5cc
+Author: Todd Lipcon <todd@apache.org>
+Date:   Tue May 17 00:53:51 2011 +0000
+
+    HADOOP-7286. Refactor the du/dus/df commands to conform to new FsCommand class. Contributed by Daryn Sharp.
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/trunk@1103968 13f79535-47bb-0310-9956-ffa450edef68
+
+commit a8a336b1b5082dcab29c5fed45fed4b01312426d
+Author: Todd Lipcon <todd@apache.org>
+Date:   Fri May 13 18:49:16 2011 +0000
+
+    HADOOP-7285. Refactor the test command to conform to new FsCommand class. Contributed by Daryn Sharp.
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/trunk@1102861 13f79535-47bb-0310-9956-ffa450edef68
+
+commit 7f77fad79af0010cd22ca773d9af27110429d3a2
+Author: Tsz-wo Sze <szetszwo@apache.org>
+Date:   Wed May 11 21:12:23 2011 +0000
+
+    HADOOP-7267. Refactor the rm/rmr/expunge commands to conform to new FsCommand class.  Contributed by Daryn Sharp
+    
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/trunk@1102093 13f79535-47bb-0310-9956-ffa450edef68
+
+commit cd2079f0e4aa292492b5d6c0d0af5bfa41a39043
+Author: Tsz-wo Sze <szetszwo@apache.org>
+Date:   Wed May 11 20:20:18 2011 +0000
+
+    HADOOP-7237. Refactor the touchz commands to conform to new FsCommand class.  Contributed by Daryn Sharp
+    
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/trunk@1102068 13f79535-47bb-0310-9956-ffa450edef68
+
+commit 4aa51ca6f9ba0b096568bfb5aa4249fd41d99899
+Author: Tsz-wo Sze <szetszwo@apache.org>
+Date:   Wed May 11 18:32:18 2011 +0000
+
+    HADOOP-7275. Refactor the stat commands to conform to new FsCommand class.  Contributed by Daryn Sharp
+    
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/trunk@1102012 13f79535-47bb-0310-9956-ffa450edef68
+
+commit 3337cdb3121d926301a3cca17abef029abdb2ff3
+Author: Tsz-wo Sze <szetszwo@apache.org>
+Date:   Mon May 9 20:08:51 2011 +0000
+
+    HADOOP-7238. Refactor the cat and text commands to conform to new FsCommand class.  Contributed by Daryn Sharp
+    
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/trunk@1101199 13f79535-47bb-0310-9956-ffa450edef68
+
+commit 4de502c7c050373efe8620b320ab4413bd54cfa2
+Author: Tsz-wo Sze <szetszwo@apache.org>
+Date:   Fri May 6 20:55:30 2011 +0000
+
+    HADOOP-7251. Refactor the getmerge command to conform to new FsCommand class.  Contributed by Daryn Sharp
+    
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/trunk@1100369 13f79535-47bb-0310-9956-ffa450edef68
+
+commit 38ac23159dd0eea5a58928fbcff501cbd9ffdd5b
+Author: Tsz-wo Sze <szetszwo@apache.org>
+Date:   Fri May 6 20:14:15 2011 +0000
+
+    HADOOP-7249. Refactor the chmod/chown/chgrp command to conform to new FsCommand class.  Contributed by Daryn Sharp
+    
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/trunk@1100356 13f79535-47bb-0310-9956-ffa450edef68
+
+commit b9599b26dc92634674e9c609b6df9b8d2c408e6e
+Author: Tsz-wo Sze <szetszwo@apache.org>
+Date:   Wed May 4 22:48:20 2011 +0000
+
+    HADOOP-7250. Refactor the setrep command to conform to new FsCommand class.  Contributed by Daryn Sharp
+    
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/trunk@1099633 13f79535-47bb-0310-9956-ffa450edef68
+
+commit 369a20391555f9c0ca9bd5384435be12770942aa
+Author: Tsz-wo Sze <szetszwo@apache.org>
+Date:   Wed May 4 21:34:15 2011 +0000
+
+    HADOOP-7236. Refactor the mkdir command to conform to new FsCommand class.  Contributed by Daryn Sharp
+    
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/trunk@1099612 13f79535-47bb-0310-9956-ffa450edef68
+
+commit 7ebfabc65a1c4a5b7dfb3d197385bbe95859278c
+Author: Tsz-wo Sze <szetszwo@apache.org>
+Date:   Wed Apr 27 04:13:23 2011 +0000
+
+    HADOOP-7235. Refactor the tail command to conform to new FsCommand class.  Contributed by Daryn Sharp
+    
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/trunk@1096988 13f79535-47bb-0310-9956-ffa450edef68
+
+commit 99ebad8e757e90f6e036fc213d99f82dec7b80d7
+Author: Tsz-wo Sze <szetszwo@apache.org>
+Date:   Thu Apr 21 16:05:30 2011 +0000
+
+    HADOOP-7233. Refactor ls to conform to new FsCommand class.  Contributed by Daryn Sharp
+    
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/trunk@1095761 13f79535-47bb-0310-9956-ffa450edef68
+
+commit 33754052e31eceb73fae79ecf4ad371827b1615e
+Author: Konstantin Boudnik <cos@apache.org>
+Date:   Fri Apr 1 21:00:46 2011 +0000
+
+    HADOOP-7019 Refactor build targets to enable faster cross project dev cycles. Contributed by Luke Lu.
+    
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/trunk@1087896 13f79535-47bb-0310-9956-ffa450edef68

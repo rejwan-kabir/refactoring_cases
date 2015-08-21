@@ -1,0 +1,20 @@
+1: extract method
+2: ExtractMethod and SelfEncapsulate Field
+3: extract method (reuse method)
+4: (Refactor class: move method to static helper class)
+5: (Refactor to use apache curator framework)
+6: extract class and extract method (for conditional)
+7: (change of method signature)
+8: (small change)
+9: extract method (a very big method into 4 smaller methods)
+10: ?? (Refactoring of lazy persist storage cases)
+11: extract class
+12: extract method
+13: Extract Class
+14: Collapse Hierarchy
+15: ?? (A refactoring to avoid using lock)
+16: extract class
+17: ?? (Refactor Proxyusers to use AccessControlList)
+18: Refactor to use utitlity functions
+19: (Change method Signature)
+20: ?? (Refactor refresh*Protocols into a single generic refreshConfigProtocol)

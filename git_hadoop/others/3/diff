@@ -1,0 +1,75 @@
+commit f43f0999d9b43ac0f72ffde616dad4e60ff01cd9
+Author: Yi Liu <yliu@apache.org>
+Date:   Sun Jun 22 07:20:47 2014 +0000
+
+    HADOOP-10713. Refactor CryptoCodec#generateSecureRandom to take a byte[]. (wang via yliu)
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/branches/fs-encryption@1604537 13f79535-47bb-0310-9956-ffa450edef68
+
+diff --git a/hadoop-common-project/hadoop-common/CHANGES-fs-encryption.txt b/hadoop-common-project/hadoop-common/CHANGES-fs-encryption.txt
+index 4b8e982..8983f8e 100644
+--- a/hadoop-common-project/hadoop-common/CHANGES-fs-encryption.txt
++++ b/hadoop-common-project/hadoop-common/CHANGES-fs-encryption.txt
+@@ -25,6 +25,9 @@ fs-encryption (Unreleased)
+     HADOOP-10662. NullPointerException in CryptoInputStream while wrapped
+     stream is not ByteBufferReadable. Add tests using normal stream. (Yi Liu)
+ 
++    HADOOP-10713. Refactor CryptoCodec#generateSecureRandom to take a byte[]. 
++    (wang via yliu)
++
+   OPTIMIZATIONS
+ 
+   BUG FIXES
+diff --git a/hadoop-common-project/hadoop-common/src/main/java/org/apache/hadoop/crypto/CryptoCodec.java b/hadoop-common-project/hadoop-common/src/main/java/org/apache/hadoop/crypto/CryptoCodec.java
+index 277246c..b166423 100644
+--- a/hadoop-common-project/hadoop-common/src/main/java/org/apache/hadoop/crypto/CryptoCodec.java
++++ b/hadoop-common-project/hadoop-common/src/main/java/org/apache/hadoop/crypto/CryptoCodec.java
+@@ -81,9 +81,10 @@ public static CryptoCodec getInstance(Configuration conf) {
+   public abstract void calculateIV(byte[] initIV, long counter, byte[] IV);
+   
+   /**
+-   * Generate secure random.
+-   * @param bytes length of the secure random
+-   * @return byte[] the secure random
++   * Generate a number of secure, random bytes suitable for cryptographic use.
++   * This method needs to be thread-safe.
++   *
++   * @param bytes byte array to populate with random data
+    */
+-  public abstract byte[] generateSecureRandom(int bytes);
++  public abstract void generateSecureRandom(byte[] bytes);
+ }
+diff --git a/hadoop-common-project/hadoop-common/src/main/java/org/apache/hadoop/crypto/JCEAESCTRCryptoCodec.java b/hadoop-common-project/hadoop-common/src/main/java/org/apache/hadoop/crypto/JCEAESCTRCryptoCodec.java
+index 22a036a..a2eeea4 100644
+--- a/hadoop-common-project/hadoop-common/src/main/java/org/apache/hadoop/crypto/JCEAESCTRCryptoCodec.java
++++ b/hadoop-common-project/hadoop-common/src/main/java/org/apache/hadoop/crypto/JCEAESCTRCryptoCodec.java
+@@ -79,10 +79,8 @@ public Decryptor createDecryptor() throws GeneralSecurityException {
+   }
+   
+   @Override
+-  public byte[] generateSecureRandom(int bytes) {
+-    final byte[] data = new byte[bytes];
+-    random.nextBytes(data);
+-    return data;
++  public void generateSecureRandom(byte[] bytes) {
++    random.nextBytes(bytes);
+   }  
+   
+   private static class JCEAESCTRCipher implements Encryptor, Decryptor {
+diff --git a/hadoop-common-project/hadoop-common/src/test/java/org/apache/hadoop/crypto/TestCryptoCodec.java b/hadoop-common-project/hadoop-common/src/test/java/org/apache/hadoop/crypto/TestCryptoCodec.java
+index 8213ad8..f4a34a1 100644
+--- a/hadoop-common-project/hadoop-common/src/test/java/org/apache/hadoop/crypto/TestCryptoCodec.java
++++ b/hadoop-common-project/hadoop-common/src/test/java/org/apache/hadoop/crypto/TestCryptoCodec.java
+@@ -49,8 +49,10 @@ public void testSecureRandom() throws Exception {
+   }
+   
+   private void checkSecureRandom(int len) {
+-    byte[] rand = codec.generateSecureRandom(len);
+-    byte[] rand1 = codec.generateSecureRandom(len);
++    byte[] rand = new byte[len];
++    byte[] rand1 = new byte[len];
++    codec.generateSecureRandom(rand);
++    codec.generateSecureRandom(rand1);
+     
+     Assert.assertEquals(len, rand.length);
+     Assert.assertEquals(len, rand1.length);

@@ -1,0 +1,10 @@
+To collect refactoring cases using git tool, use the commands as follow:
+
+1. get the commit with refactoring
+	git log --grep="[Rr]efactor" --regexp-ignore-case
+2. show the diff of the commit
+	git show <commit_sha>
+3. show the file content of the commit  
+	git show <commit_sha>:<filepath>
+4. show the file content before the comiit
+	git show <commit_sha>~1:<filepath>

@@ -1,0 +1,2150 @@
+commit c17439c2ddd921b63b1635e6f1cba634b8da8557
+Author: Andrew Wang <wang@apache.org>
+Date:   Fri Jun 12 11:35:39 2015 -0700
+
+    HDFS-8499. Refactor BlockInfo class hierarchy with static helper class. Contributed by Zhe Zhang.
+
+diff --git a/hadoop-hdfs-project/hadoop-hdfs/CHANGES.txt b/hadoop-hdfs-project/hadoop-hdfs/CHANGES.txt
+index e315db6..033451e 100644
+--- a/hadoop-hdfs-project/hadoop-hdfs/CHANGES.txt
++++ b/hadoop-hdfs-project/hadoop-hdfs/CHANGES.txt
+@@ -626,6 +626,9 @@ Release 2.8.0 - UNRELEASED
+     HDFS-7923. The DataNodes should rate-limit their full block reports by
+     asking the NN on heartbeat messages (cmccabe)
+ 
++    HDFS-8499. Refactor BlockInfo class hierarchy with static helper class.
++    (Zhe Zhang via wang)
++
+   OPTIMIZATIONS
+ 
+     HDFS-8026. Trace FSOutputSummer#writeChecksumChunks rather than
+diff --git a/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/blockmanagement/BlockCollection.java b/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/blockmanagement/BlockCollection.java
+index 02a1d05..f11a825 100644
+--- a/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/blockmanagement/BlockCollection.java
++++ b/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/blockmanagement/BlockCollection.java
+@@ -79,7 +79,7 @@
+    * Convert the last block of the collection to an under-construction block
+    * and set the locations.
+    */
+-  public BlockInfoContiguousUnderConstruction setLastBlock(BlockInfo lastBlock,
++  public BlockInfoUnderConstruction setLastBlock(BlockInfo lastBlock,
+       DatanodeStorageInfo[] targets) throws IOException;
+ 
+   /**
+diff --git a/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/blockmanagement/BlockInfo.java b/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/blockmanagement/BlockInfo.java
+index dea31c4..4cc2791 100644
+--- a/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/blockmanagement/BlockInfo.java
++++ b/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/blockmanagement/BlockInfo.java
+@@ -51,7 +51,7 @@
+    * per replica is 42 bytes (LinkedList#Entry object per replica) versus 16
+    * bytes using the triplets.
+    */
+-  protected Object[] triplets;
++  Object[] triplets;
+ 
+   /**
+    * Construct an entry for blocksmap
+@@ -295,7 +295,7 @@ public BlockInfo moveBlockToHead(BlockInfo head,
+   /**
+    * BlockInfo represents a block that is not being constructed.
+    * In order to start modifying the block, the BlockInfo should be converted
+-   * to {@link BlockInfoContiguousUnderConstruction}.
++   * to {@link BlockInfoUnderConstruction}.
+    * @return {@link BlockUCState#COMPLETE}
+    */
+   public BlockUCState getBlockUCState() {
+@@ -312,27 +312,29 @@ public boolean isComplete() {
+   }
+ 
+   /**
+-   * Convert a complete block to an under construction block.
++   * Convert a block to an under construction block.
+    * @return BlockInfoUnderConstruction -  an under construction block.
+    */
+-  public BlockInfoContiguousUnderConstruction convertToBlockUnderConstruction(
++  public BlockInfoUnderConstruction convertToBlockUnderConstruction(
+       BlockUCState s, DatanodeStorageInfo[] targets) {
+     if(isComplete()) {
+-      BlockInfoContiguousUnderConstruction ucBlock =
+-          new BlockInfoContiguousUnderConstruction(this,
+-          getBlockCollection().getPreferredBlockReplication(), s, targets);
+-      ucBlock.setBlockCollection(getBlockCollection());
+-      return ucBlock;
++      return convertCompleteBlockToUC(s, targets);
+     }
+     // the block is already under construction
+-    BlockInfoContiguousUnderConstruction ucBlock =
+-        (BlockInfoContiguousUnderConstruction)this;
++    BlockInfoUnderConstruction ucBlock =
++        (BlockInfoUnderConstruction)this;
+     ucBlock.setBlockUCState(s);
+     ucBlock.setExpectedLocations(targets);
+     ucBlock.setBlockCollection(getBlockCollection());
+     return ucBlock;
+   }
+ 
++  /**
++   * Convert a complete block to an under construction block.
++   */
++  abstract BlockInfoUnderConstruction convertCompleteBlockToUC(
++      BlockUCState s, DatanodeStorageInfo[] targets);
++
+   @Override
+   public int hashCode() {
+     // Super implementation is sufficient
+diff --git a/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/blockmanagement/BlockInfoContiguous.java b/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/blockmanagement/BlockInfoContiguous.java
+index eff89a8..b9abcd0 100644
+--- a/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/blockmanagement/BlockInfoContiguous.java
++++ b/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/blockmanagement/BlockInfoContiguous.java
+@@ -19,13 +19,13 @@
+ 
+ import org.apache.hadoop.classification.InterfaceAudience;
+ import org.apache.hadoop.hdfs.protocol.Block;
++import org.apache.hadoop.hdfs.server.common.HdfsServerConstants;
+ 
+ /**
+  * Subclass of {@link BlockInfo}, used for a block with replication scheme.
+  */
+ @InterfaceAudience.Private
+ public class BlockInfoContiguous extends BlockInfo {
+-  public static final BlockInfoContiguous[] EMPTY_ARRAY = {};
+ 
+   public BlockInfoContiguous(short size) {
+     super(size);
+@@ -40,84 +40,37 @@ public BlockInfoContiguous(Block blk, short size) {
+    * This is used to convert BlockReplicationInfoUnderConstruction
+    * @param from BlockReplicationInfo to copy from.
+    */
+-  protected BlockInfoContiguous(BlockInfoContiguous from) {
++  protected BlockInfoContiguous(BlockInfo from) {
+     super(from);
+   }
+ 
+-  /**
+-   * Ensure that there is enough  space to include num more triplets.
+-   * @return first free triplet index.
+-   */
+-  private int ensureCapacity(int num) {
+-    assert this.triplets != null : "BlockInfo is not initialized";
+-    int last = numNodes();
+-    if (triplets.length >= (last+num)*3) {
+-      return last;
+-    }
+-    /* Not enough space left. Create a new array. Should normally
+-     * happen only when replication is manually increased by the user. */
+-    Object[] old = triplets;
+-    triplets = new Object[(last+num)*3];
+-    System.arraycopy(old, 0, triplets, 0, last * 3);
+-    return last;
+-  }
+-
+   @Override
+   boolean addStorage(DatanodeStorageInfo storage) {
+-    // find the last null node
+-    int lastNode = ensureCapacity(1);
+-    setStorageInfo(lastNode, storage);
+-    setNext(lastNode, null);
+-    setPrevious(lastNode, null);
+-    return true;
++    return ContiguousBlockStorageOp.addStorage(this, storage);
+   }
+ 
+   @Override
+   boolean removeStorage(DatanodeStorageInfo storage) {
+-    int dnIndex = findStorageInfo(storage);
+-    if (dnIndex < 0) { // the node is not found
+-      return false;
+-    }
+-    assert getPrevious(dnIndex) == null && getNext(dnIndex) == null :
+-        "Block is still in the list and must be removed first.";
+-    // find the last not null node
+-    int lastNode = numNodes()-1;
+-    // replace current node triplet by the lastNode one
+-    setStorageInfo(dnIndex, getStorageInfo(lastNode));
+-    setNext(dnIndex, getNext(lastNode));
+-    setPrevious(dnIndex, getPrevious(lastNode));
+-    // set the last triplet to null
+-    setStorageInfo(lastNode, null);
+-    setNext(lastNode, null);
+-    setPrevious(lastNode, null);
+-    return true;
++    return ContiguousBlockStorageOp.removeStorage(this, storage);
+   }
+ 
+   @Override
+   public int numNodes() {
+-    assert this.triplets != null : "BlockInfo is not initialized";
+-    assert triplets.length % 3 == 0 : "Malformed BlockInfo";
+-
+-    for (int idx = getCapacity()-1; idx >= 0; idx--) {
+-      if (getDatanode(idx) != null) {
+-        return idx + 1;
+-      }
+-    }
+-    return 0;
++    return ContiguousBlockStorageOp.numNodes(this);
+   }
+ 
+   @Override
+   void replaceBlock(BlockInfo newBlock) {
+-    assert newBlock instanceof BlockInfoContiguous;
+-    for (int i = this.numNodes() - 1; i >= 0; i--) {
+-      final DatanodeStorageInfo storage = this.getStorageInfo(i);
+-      final boolean removed = storage.removeBlock(this);
+-      assert removed : "currentBlock not found.";
++    ContiguousBlockStorageOp.replaceBlock(this, newBlock);
++  }
+ 
+-      final DatanodeStorageInfo.AddBlockResult result = storage.addBlock(
+-          newBlock);
+-      assert result == DatanodeStorageInfo.AddBlockResult.ADDED :
+-          "newBlock already exists.";
+-    }
++  @Override
++  BlockInfoUnderConstruction convertCompleteBlockToUC(
++      HdfsServerConstants.BlockUCState s, DatanodeStorageInfo[] targets) {
++    BlockInfoUnderConstructionContiguous ucBlock =
++        new BlockInfoUnderConstructionContiguous(this,
++            getBlockCollection().getPreferredBlockReplication(), s, targets);
++    ucBlock.setBlockCollection(getBlockCollection());
++    return ucBlock;
+   }
+ }
+diff --git a/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/blockmanagement/BlockInfoContiguousUnderConstruction.java b/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/blockmanagement/BlockInfoContiguousUnderConstruction.java
+deleted file mode 100644
+index b757171..0000000
+--- a/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/blockmanagement/BlockInfoContiguousUnderConstruction.java
++++ /dev/null
+@@ -1,403 +0,0 @@
+-/**
+- * Licensed to the Apache Software Foundation (ASF) under one
+- * or more contributor license agreements.  See the NOTICE file
+- * distributed with this work for additional information
+- * regarding copyright ownership.  The ASF licenses this file
+- * to you under the Apache License, Version 2.0 (the
+- * "License"); you may not use this file except in compliance
+- * with the License.  You may obtain a copy of the License at
+- *
+- *     http://www.apache.org/licenses/LICENSE-2.0
+- *
+- * Unless required by applicable law or agreed to in writing, software
+- * distributed under the License is distributed on an "AS IS" BASIS,
+- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+- * See the License for the specific language governing permissions and
+- * limitations under the License.
+- */
+-package org.apache.hadoop.hdfs.server.blockmanagement;
+-
+-import java.io.IOException;
+-import java.util.ArrayList;
+-import java.util.Iterator;
+-import java.util.List;
+-
+-import org.apache.hadoop.hdfs.protocol.Block;
+-import org.apache.hadoop.hdfs.server.common.HdfsServerConstants.BlockUCState;
+-import org.apache.hadoop.hdfs.server.common.HdfsServerConstants.ReplicaState;
+-import org.apache.hadoop.hdfs.server.namenode.NameNode;
+-
+-/**
+- * Represents a block that is currently being constructed.<br>
+- * This is usually the last block of a file opened for write or append.
+- */
+-public class BlockInfoContiguousUnderConstruction extends BlockInfoContiguous {
+-  /** Block state. See {@link BlockUCState} */
+-  private BlockUCState blockUCState;
+-
+-  /**
+-   * Block replicas as assigned when the block was allocated.
+-   * This defines the pipeline order.
+-   */
+-  private List<ReplicaUnderConstruction> replicas;
+-
+-  /**
+-   * Index of the primary data node doing the recovery. Useful for log
+-   * messages.
+-   */
+-  private int primaryNodeIndex = -1;
+-
+-  /**
+-   * The new generation stamp, which this block will have
+-   * after the recovery succeeds. Also used as a recovery id to identify
+-   * the right recovery if any of the abandoned recoveries re-appear.
+-   */
+-  private long blockRecoveryId = 0;
+-
+-  /**
+-   * The block source to use in the event of copy-on-write truncate.
+-   */
+-  private Block truncateBlock;
+-
+-  /**
+-   * ReplicaUnderConstruction contains information about replicas while
+-   * they are under construction.
+-   * The GS, the length and the state of the replica is as reported by 
+-   * the data-node.
+-   * It is not guaranteed, but expected, that data-nodes actually have
+-   * corresponding replicas.
+-   */
+-  static class ReplicaUnderConstruction extends Block {
+-    private final DatanodeStorageInfo expectedLocation;
+-    private ReplicaState state;
+-    private boolean chosenAsPrimary;
+-
+-    ReplicaUnderConstruction(Block block,
+-                             DatanodeStorageInfo target,
+-                             ReplicaState state) {
+-      super(block);
+-      this.expectedLocation = target;
+-      this.state = state;
+-      this.chosenAsPrimary = false;
+-    }
+-
+-    /**
+-     * Expected block replica location as assigned when the block was allocated.
+-     * This defines the pipeline order.
+-     * It is not guaranteed, but expected, that the data-node actually has
+-     * the replica.
+-     */
+-    private DatanodeStorageInfo getExpectedStorageLocation() {
+-      return expectedLocation;
+-    }
+-
+-    /**
+-     * Get replica state as reported by the data-node.
+-     */
+-    ReplicaState getState() {
+-      return state;
+-    }
+-
+-    /**
+-     * Whether the replica was chosen for recovery.
+-     */
+-    boolean getChosenAsPrimary() {
+-      return chosenAsPrimary;
+-    }
+-
+-    /**
+-     * Set replica state.
+-     */
+-    void setState(ReplicaState s) {
+-      state = s;
+-    }
+-
+-    /**
+-     * Set whether this replica was chosen for recovery.
+-     */
+-    void setChosenAsPrimary(boolean chosenAsPrimary) {
+-      this.chosenAsPrimary = chosenAsPrimary;
+-    }
+-
+-    /**
+-     * Is data-node the replica belongs to alive.
+-     */
+-    boolean isAlive() {
+-      return expectedLocation.getDatanodeDescriptor().isAlive;
+-    }
+-
+-    @Override // Block
+-    public int hashCode() {
+-      return super.hashCode();
+-    }
+-
+-    @Override // Block
+-    public boolean equals(Object obj) {
+-      // Sufficient to rely on super's implementation
+-      return (this == obj) || super.equals(obj);
+-    }
+-
+-    @Override
+-    public String toString() {
+-      final StringBuilder b = new StringBuilder(50);
+-      appendStringTo(b);
+-      return b.toString();
+-    }
+-    
+-    @Override
+-    public void appendStringTo(StringBuilder sb) {
+-      sb.append("ReplicaUC[")
+-        .append(expectedLocation)
+-        .append("|")
+-        .append(state)
+-        .append("]");
+-    }
+-  }
+-
+-  /**
+-   * Create block and set its state to
+-   * {@link BlockUCState#UNDER_CONSTRUCTION}.
+-   */
+-  public BlockInfoContiguousUnderConstruction(Block blk, short replication) {
+-    this(blk, replication, BlockUCState.UNDER_CONSTRUCTION, null);
+-  }
+-
+-  /**
+-   * Create a block that is currently being constructed.
+-   */
+-  public BlockInfoContiguousUnderConstruction(Block blk, short replication,
+-      BlockUCState state, DatanodeStorageInfo[] targets) {
+-    super(blk, replication);
+-    assert getBlockUCState() != BlockUCState.COMPLETE :
+-      "BlockInfoUnderConstruction cannot be in COMPLETE state";
+-    this.blockUCState = state;
+-    setExpectedLocations(targets);
+-  }
+-
+-  /**
+-   * Convert an under construction block to a complete block.
+-   * 
+-   * @return BlockInfo - a complete block.
+-   * @throws IOException if the state of the block 
+-   * (the generation stamp and the length) has not been committed by 
+-   * the client or it does not have at least a minimal number of replicas 
+-   * reported from data-nodes. 
+-   */
+-  BlockInfo convertToCompleteBlock() throws IOException {
+-    assert getBlockUCState() != BlockUCState.COMPLETE :
+-      "Trying to convert a COMPLETE block";
+-    return new BlockInfoContiguous(this);
+-  }
+-
+-  /** Set expected locations */
+-  public void setExpectedLocations(DatanodeStorageInfo[] targets) {
+-    int numLocations = targets == null ? 0 : targets.length;
+-    this.replicas = new ArrayList<ReplicaUnderConstruction>(numLocations);
+-    for(int i = 0; i < numLocations; i++)
+-      replicas.add(
+-        new ReplicaUnderConstruction(this, targets[i], ReplicaState.RBW));
+-  }
+-
+-  /**
+-   * Create array of expected replica locations
+-   * (as has been assigned by chooseTargets()).
+-   */
+-  public DatanodeStorageInfo[] getExpectedStorageLocations() {
+-    int numLocations = replicas == null ? 0 : replicas.size();
+-    DatanodeStorageInfo[] storages = new DatanodeStorageInfo[numLocations];
+-    for(int i = 0; i < numLocations; i++)
+-      storages[i] = replicas.get(i).getExpectedStorageLocation();
+-    return storages;
+-  }
+-
+-  /** Get the number of expected locations */
+-  public int getNumExpectedLocations() {
+-    return replicas == null ? 0 : replicas.size();
+-  }
+-
+-  /**
+-   * Return the state of the block under construction.
+-   * @see BlockUCState
+-   */
+-  @Override // BlockInfo
+-  public BlockUCState getBlockUCState() {
+-    return blockUCState;
+-  }
+-
+-  void setBlockUCState(BlockUCState s) {
+-    blockUCState = s;
+-  }
+-
+-  /** Get block recovery ID */
+-  public long getBlockRecoveryId() {
+-    return blockRecoveryId;
+-  }
+-
+-  /** Get recover block */
+-  public Block getTruncateBlock() {
+-    return truncateBlock;
+-  }
+-
+-  public void setTruncateBlock(Block recoveryBlock) {
+-    this.truncateBlock = recoveryBlock;
+-  }
+-
+-  /**
+-   * Process the recorded replicas. When about to commit or finish the
+-   * pipeline recovery sort out bad replicas.
+-   * @param genStamp  The final generation stamp for the block.
+-   */
+-  public void setGenerationStampAndVerifyReplicas(long genStamp) {
+-    // Set the generation stamp for the block.
+-    setGenerationStamp(genStamp);
+-    if (replicas == null)
+-      return;
+-
+-    // Remove the replicas with wrong gen stamp.
+-    // The replica list is unchanged.
+-    for (ReplicaUnderConstruction r : replicas) {
+-      if (genStamp != r.getGenerationStamp()) {
+-        r.getExpectedStorageLocation().removeBlock(this);
+-        NameNode.blockStateChangeLog.info("BLOCK* Removing stale replica "
+-            + "from location: {}", r.getExpectedStorageLocation());
+-      }
+-    }
+-  }
+-
+-  /**
+-   * Commit block's length and generation stamp as reported by the client.
+-   * Set block state to {@link BlockUCState#COMMITTED}.
+-   * @param block - contains client reported block length and generation 
+-   * @throws IOException if block ids are inconsistent.
+-   */
+-  void commitBlock(Block block) throws IOException {
+-    if(getBlockId() != block.getBlockId())
+-      throw new IOException("Trying to commit inconsistent block: id = "
+-          + block.getBlockId() + ", expected id = " + getBlockId());
+-    blockUCState = BlockUCState.COMMITTED;
+-    this.set(getBlockId(), block.getNumBytes(), block.getGenerationStamp());
+-    // Sort out invalid replicas.
+-    setGenerationStampAndVerifyReplicas(block.getGenerationStamp());
+-  }
+-
+-  /**
+-   * Initialize lease recovery for this block.
+-   * Find the first alive data-node starting from the previous primary and
+-   * make it primary.
+-   */
+-  public void initializeBlockRecovery(long recoveryId) {
+-    setBlockUCState(BlockUCState.UNDER_RECOVERY);
+-    blockRecoveryId = recoveryId;
+-    if (replicas.size() == 0) {
+-      NameNode.blockStateChangeLog.warn("BLOCK*"
+-        + " BlockInfoUnderConstruction.initLeaseRecovery:"
+-        + " No blocks found, lease removed.");
+-    }
+-    boolean allLiveReplicasTriedAsPrimary = true;
+-    for (int i = 0; i < replicas.size(); i++) {
+-      // Check if all replicas have been tried or not.
+-      if (replicas.get(i).isAlive()) {
+-        allLiveReplicasTriedAsPrimary =
+-            (allLiveReplicasTriedAsPrimary && replicas.get(i).getChosenAsPrimary());
+-      }
+-    }
+-    if (allLiveReplicasTriedAsPrimary) {
+-      // Just set all the replicas to be chosen whether they are alive or not.
+-      for (int i = 0; i < replicas.size(); i++) {
+-        replicas.get(i).setChosenAsPrimary(false);
+-      }
+-    }
+-    long mostRecentLastUpdate = 0;
+-    ReplicaUnderConstruction primary = null;
+-    primaryNodeIndex = -1;
+-    for(int i = 0; i < replicas.size(); i++) {
+-      // Skip alive replicas which have been chosen for recovery.
+-      if (!(replicas.get(i).isAlive() && !replicas.get(i).getChosenAsPrimary())) {
+-        continue;
+-      }
+-      final ReplicaUnderConstruction ruc = replicas.get(i);
+-      final long lastUpdate = ruc.getExpectedStorageLocation()
+-          .getDatanodeDescriptor().getLastUpdateMonotonic();
+-      if (lastUpdate > mostRecentLastUpdate) {
+-        primaryNodeIndex = i;
+-        primary = ruc;
+-        mostRecentLastUpdate = lastUpdate;
+-      }
+-    }
+-    if (primary != null) {
+-      primary.getExpectedStorageLocation().getDatanodeDescriptor().addBlockToBeRecovered(this);
+-      primary.setChosenAsPrimary(true);
+-      NameNode.blockStateChangeLog.info(
+-          "BLOCK* {} recovery started, primary={}", this, primary);
+-    }
+-  }
+-
+-  void addReplicaIfNotPresent(DatanodeStorageInfo storage,
+-                     Block block,
+-                     ReplicaState rState) {
+-    Iterator<ReplicaUnderConstruction> it = replicas.iterator();
+-    while (it.hasNext()) {
+-      ReplicaUnderConstruction r = it.next();
+-      DatanodeStorageInfo expectedLocation = r.getExpectedStorageLocation();
+-      if(expectedLocation == storage) {
+-        // Record the gen stamp from the report
+-        r.setGenerationStamp(block.getGenerationStamp());
+-        return;
+-      } else if (expectedLocation != null &&
+-                 expectedLocation.getDatanodeDescriptor() ==
+-                     storage.getDatanodeDescriptor()) {
+-
+-        // The Datanode reported that the block is on a different storage
+-        // than the one chosen by BlockPlacementPolicy. This can occur as
+-        // we allow Datanodes to choose the target storage. Update our
+-        // state by removing the stale entry and adding a new one.
+-        it.remove();
+-        break;
+-      }
+-    }
+-    replicas.add(new ReplicaUnderConstruction(block, storage, rState));
+-  }
+-
+-  @Override // BlockInfo
+-  // BlockInfoUnderConstruction participates in maps the same way as BlockInfo
+-  public int hashCode() {
+-    return super.hashCode();
+-  }
+-
+-  @Override // BlockInfo
+-  public boolean equals(Object obj) {
+-    // Sufficient to rely on super's implementation
+-    return (this == obj) || super.equals(obj);
+-  }
+-
+-  @Override
+-  public String toString() {
+-    final StringBuilder b = new StringBuilder(100);
+-    appendStringTo(b);
+-    return b.toString();
+-  }
+-
+-  @Override
+-  public void appendStringTo(StringBuilder sb) {
+-    super.appendStringTo(sb);
+-    appendUCParts(sb);
+-  }
+-
+-  private void appendUCParts(StringBuilder sb) {
+-    sb.append("{UCState=").append(blockUCState)
+-      .append(", truncateBlock=" + truncateBlock)
+-      .append(", primaryNodeIndex=").append(primaryNodeIndex)
+-      .append(", replicas=[");
+-    if (replicas != null) {
+-      Iterator<ReplicaUnderConstruction> iter = replicas.iterator();
+-      if (iter.hasNext()) {
+-        iter.next().appendStringTo(sb);
+-        while (iter.hasNext()) {
+-          sb.append(", ");
+-          iter.next().appendStringTo(sb);
+-        }
+-      }
+-    }
+-    sb.append("]}");
+-  }
+-}
+diff --git a/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/blockmanagement/BlockInfoUnderConstruction.java b/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/blockmanagement/BlockInfoUnderConstruction.java
+new file mode 100644
+index 0000000..9cd3987
+--- /dev/null
++++ b/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/blockmanagement/BlockInfoUnderConstruction.java
+@@ -0,0 +1,405 @@
++/**
++ * Licensed to the Apache Software Foundation (ASF) under one
++ * or more contributor license agreements.  See the NOTICE file
++ * distributed with this work for additional information
++ * regarding copyright ownership.  The ASF licenses this file
++ * to you under the Apache License, Version 2.0 (the
++ * "License"); you may not use this file except in compliance
++ * with the License.  You may obtain a copy of the License at
++ *
++ *     http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.apache.hadoop.hdfs.server.blockmanagement;
++
++import java.io.IOException;
++import java.util.ArrayList;
++import java.util.Iterator;
++import java.util.List;
++
++import com.google.common.base.Preconditions;
++import org.apache.hadoop.hdfs.protocol.Block;
++import org.apache.hadoop.hdfs.server.common.HdfsServerConstants;
++import org.apache.hadoop.hdfs.server.common.HdfsServerConstants.BlockUCState;
++import org.apache.hadoop.hdfs.server.common.HdfsServerConstants.ReplicaState;
++import org.apache.hadoop.hdfs.server.namenode.NameNode;
++
++/**
++ * Represents a block that is currently being constructed.<br>
++ * This is usually the last block of a file opened for write or append.
++ */
++public abstract class BlockInfoUnderConstruction extends BlockInfo {
++  /** Block state. See {@link BlockUCState} */
++  protected BlockUCState blockUCState;
++
++  /**
++   * Block replicas as assigned when the block was allocated.
++   * This defines the pipeline order.
++   */
++  protected List<ReplicaUnderConstruction> replicas;
++
++  /**
++   * Index of the primary data node doing the recovery. Useful for log
++   * messages.
++   */
++  private int primaryNodeIndex = -1;
++
++  /**
++   * The new generation stamp, which this block will have
++   * after the recovery succeeds. Also used as a recovery id to identify
++   * the right recovery if any of the abandoned recoveries re-appear.
++   */
++  private long blockRecoveryId = 0;
++
++  /**
++   * The block source to use in the event of copy-on-write truncate.
++   */
++  protected Block truncateBlock;
++
++  /**
++   * ReplicaUnderConstruction contains information about replicas while
++   * they are under construction.
++   * The GS, the length and the state of the replica is as reported by
++   * the data-node.
++   * It is not guaranteed, but expected, that data-nodes actually have
++   * corresponding replicas.
++   */
++  static class ReplicaUnderConstruction extends Block {
++    private final DatanodeStorageInfo expectedLocation;
++    private ReplicaState state;
++    private boolean chosenAsPrimary;
++
++    ReplicaUnderConstruction(Block block,
++                             DatanodeStorageInfo target,
++                             ReplicaState state) {
++      super(block);
++      this.expectedLocation = target;
++      this.state = state;
++      this.chosenAsPrimary = false;
++    }
++
++    /**
++     * Expected block replica location as assigned when the block was allocated.
++     * This defines the pipeline order.
++     * It is not guaranteed, but expected, that the data-node actually has
++     * the replica.
++     */
++    private DatanodeStorageInfo getExpectedStorageLocation() {
++      return expectedLocation;
++    }
++
++    /**
++     * Get replica state as reported by the data-node.
++     */
++    ReplicaState getState() {
++      return state;
++    }
++
++    /**
++     * Whether the replica was chosen for recovery.
++     */
++    boolean getChosenAsPrimary() {
++      return chosenAsPrimary;
++    }
++
++    /**
++     * Set replica state.
++     */
++    void setState(ReplicaState s) {
++      state = s;
++    }
++
++    /**
++     * Set whether this replica was chosen for recovery.
++     */
++    void setChosenAsPrimary(boolean chosenAsPrimary) {
++      this.chosenAsPrimary = chosenAsPrimary;
++    }
++
++    /**
++     * Is data-node the replica belongs to alive.
++     */
++    boolean isAlive() {
++      return expectedLocation.getDatanodeDescriptor().isAlive;
++    }
++
++    @Override // Block
++    public int hashCode() {
++      return super.hashCode();
++    }
++
++    @Override // Block
++    public boolean equals(Object obj) {
++      // Sufficient to rely on super's implementation
++      return (this == obj) || super.equals(obj);
++    }
++
++    @Override
++    public String toString() {
++      final StringBuilder b = new StringBuilder(50);
++      appendStringTo(b);
++      return b.toString();
++    }
++
++    @Override
++    public void appendStringTo(StringBuilder sb) {
++      sb.append("ReplicaUC[")
++        .append(expectedLocation)
++        .append("|")
++        .append(state)
++        .append("]");
++    }
++  }
++
++  /**
++   * Create block and set its state to
++   * {@link BlockUCState#UNDER_CONSTRUCTION}.
++   */
++  public BlockInfoUnderConstruction(Block blk, short replication) {
++    this(blk, replication, BlockUCState.UNDER_CONSTRUCTION, null);
++  }
++
++  /**
++   * Create a block that is currently being constructed.
++   */
++  public BlockInfoUnderConstruction(Block blk, short replication,
++      BlockUCState state, DatanodeStorageInfo[] targets) {
++    super(blk, replication);
++    Preconditions.checkState(getBlockUCState() != BlockUCState.COMPLETE,
++        "BlockInfoUnderConstruction cannot be in COMPLETE state");
++    this.blockUCState = state;
++    setExpectedLocations(targets);
++  }
++
++  /** Set expected locations. */
++  public abstract void setExpectedLocations(DatanodeStorageInfo[] targets);
++
++  /**
++   * Create array of expected replica locations
++   * (as has been assigned by chooseTargets()).
++   */
++  public DatanodeStorageInfo[] getExpectedStorageLocations() {
++    int numLocations = replicas == null ? 0 : replicas.size();
++    DatanodeStorageInfo[] storages = new DatanodeStorageInfo[numLocations];
++    for(int i = 0; i < numLocations; i++) {
++      storages[i] = replicas.get(i).getExpectedStorageLocation();
++    }
++    return storages;
++  }
++
++  /** Get the number of expected locations. */
++  public int getNumExpectedLocations() {
++    return replicas == null ? 0 : replicas.size();
++  }
++
++  /**
++   * Return the state of the block under construction.
++   * @see BlockUCState
++   */
++  @Override // BlockInfo
++  public BlockUCState getBlockUCState() {
++    return blockUCState;
++  }
++
++  void setBlockUCState(BlockUCState s) {
++    blockUCState = s;
++  }
++
++  /** Get block recovery ID. */
++  public long getBlockRecoveryId() {
++    return blockRecoveryId;
++  }
++
++  /** Get recover block. */
++  public abstract Block getTruncateBlock();
++
++  public abstract void setTruncateBlock(Block recoveryBlock);
++
++  /**
++   * Process the recorded replicas. When about to commit or finish the
++   * pipeline recovery sort out bad replicas.
++   * @param genStamp  The final generation stamp for the block.
++   */
++  public void setGenerationStampAndVerifyReplicas(long genStamp) {
++    // Set the generation stamp for the block.
++    setGenerationStamp(genStamp);
++    if (replicas == null) {
++      return;
++    }
++
++    // Remove the replicas with wrong gen stamp.
++    // The replica list is unchanged.
++    for (ReplicaUnderConstruction r : replicas) {
++      if (genStamp != r.getGenerationStamp()) {
++        r.getExpectedStorageLocation().removeBlock(this);
++        NameNode.blockStateChangeLog.info("BLOCK* Removing stale replica "
++            + "from location: {}", r.getExpectedStorageLocation());
++      }
++    }
++  }
++
++  /**
++   * Commit block's length and generation stamp as reported by the client.
++   * Set block state to {@link BlockUCState#COMMITTED}.
++   * @param block - contains client reported block length and generation
++   * @throws IOException if block ids are inconsistent.
++   */
++  void commitBlock(Block block) throws IOException {
++    if(getBlockId() != block.getBlockId()) {
++      throw new IOException("Trying to commit inconsistent block: id = "
++          + block.getBlockId() + ", expected id = " + getBlockId());
++    }
++    blockUCState = BlockUCState.COMMITTED;
++    this.set(getBlockId(), block.getNumBytes(), block.getGenerationStamp());
++    // Sort out invalid replicas.
++    setGenerationStampAndVerifyReplicas(block.getGenerationStamp());
++  }
++
++  /**
++   * Initialize lease recovery for this block.
++   * Find the first alive data-node starting from the previous primary and
++   * make it primary.
++   */
++  public void initializeBlockRecovery(long recoveryId) {
++    setBlockUCState(BlockUCState.UNDER_RECOVERY);
++    blockRecoveryId = recoveryId;
++    if (replicas.size() == 0) {
++      NameNode.blockStateChangeLog.warn("BLOCK* " +
++          "BlockInfoUnderConstruction.initLeaseRecovery: " +
++          "No blocks found, lease removed.");
++    }
++    boolean allLiveReplicasTriedAsPrimary = true;
++    for (int i = 0; i < replicas.size(); i++) {
++      // Check if all replicas have been tried or not.
++      if (replicas.get(i).isAlive()) {
++        allLiveReplicasTriedAsPrimary =
++            (allLiveReplicasTriedAsPrimary &&
++                replicas.get(i).getChosenAsPrimary());
++      }
++    }
++    if (allLiveReplicasTriedAsPrimary) {
++      // Just set all the replicas to be chosen whether they are alive or not.
++      for (int i = 0; i < replicas.size(); i++) {
++        replicas.get(i).setChosenAsPrimary(false);
++      }
++    }
++    long mostRecentLastUpdate = 0;
++    ReplicaUnderConstruction primary = null;
++    primaryNodeIndex = -1;
++    for(int i = 0; i < replicas.size(); i++) {
++      // Skip alive replicas which have been chosen for recovery.
++      if (!(replicas.get(i).isAlive() &&
++          !replicas.get(i).getChosenAsPrimary())) {
++        continue;
++      }
++      final ReplicaUnderConstruction ruc = replicas.get(i);
++      final long lastUpdate = ruc.getExpectedStorageLocation()
++          .getDatanodeDescriptor().getLastUpdateMonotonic();
++      if (lastUpdate > mostRecentLastUpdate) {
++        primaryNodeIndex = i;
++        primary = ruc;
++        mostRecentLastUpdate = lastUpdate;
++      }
++    }
++    if (primary != null) {
++      primary.getExpectedStorageLocation().
++          getDatanodeDescriptor().addBlockToBeRecovered(this);
++      primary.setChosenAsPrimary(true);
++      NameNode.blockStateChangeLog.info(
++          "BLOCK* {} recovery started, primary={}", this, primary);
++    }
++  }
++
++  void addReplicaIfNotPresent(DatanodeStorageInfo storage,
++                     Block block,
++                     ReplicaState rState) {
++    Iterator<ReplicaUnderConstruction> it = replicas.iterator();
++    while (it.hasNext()) {
++      ReplicaUnderConstruction r = it.next();
++      DatanodeStorageInfo expectedLocation = r.getExpectedStorageLocation();
++      if(expectedLocation == storage) {
++        // Record the gen stamp from the report
++        r.setGenerationStamp(block.getGenerationStamp());
++        return;
++      } else if (expectedLocation != null &&
++                 expectedLocation.getDatanodeDescriptor() ==
++                     storage.getDatanodeDescriptor()) {
++
++        // The Datanode reported that the block is on a different storage
++        // than the one chosen by BlockPlacementPolicy. This can occur as
++        // we allow Datanodes to choose the target storage. Update our
++        // state by removing the stale entry and adding a new one.
++        it.remove();
++        break;
++      }
++    }
++    replicas.add(new ReplicaUnderConstruction(block, storage, rState));
++  }
++
++  /**
++   * Convert an under construction block to a complete block.
++   *
++   * @return a complete block.
++   * @throws IOException
++   *           if the state of the block (the generation stamp and the length)
++   *           has not been committed by the client or it does not have at
++   *           least a minimal number of replicas reported from data-nodes.
++   */
++  public abstract BlockInfo convertToCompleteBlock();
++
++  @Override
++  BlockInfoUnderConstruction convertCompleteBlockToUC
++      (HdfsServerConstants.BlockUCState s, DatanodeStorageInfo[] targets) {
++    BlockManager.LOG.error("convertCompleteBlockToUC should only be applied " +
++        "on complete blocks.");
++    return null;
++  }
++
++  @Override // BlockInfo
++  // BlockInfoUnderConstruction participates in maps the same way as BlockInfo
++  public int hashCode() {
++    return super.hashCode();
++  }
++
++  @Override // BlockInfo
++  public boolean equals(Object obj) {
++    // Sufficient to rely on super's implementation
++    return (this == obj) || super.equals(obj);
++  }
++
++  @Override
++  public String toString() {
++    final StringBuilder b = new StringBuilder(100);
++    appendStringTo(b);
++    return b.toString();
++  }
++
++  @Override
++  public void appendStringTo(StringBuilder sb) {
++    super.appendStringTo(sb);
++    appendUCParts(sb);
++  }
++
++  private void appendUCParts(StringBuilder sb) {
++    sb.append("{UCState=").append(blockUCState)
++      .append(", truncateBlock=" + truncateBlock)
++      .append(", primaryNodeIndex=").append(primaryNodeIndex)
++      .append(", replicas=[");
++    if (replicas != null) {
++      Iterator<ReplicaUnderConstruction> iter = replicas.iterator();
++      if (iter.hasNext()) {
++        iter.next().appendStringTo(sb);
++        while (iter.hasNext()) {
++          sb.append(", ");
++          iter.next().appendStringTo(sb);
++        }
++      }
++    }
++    sb.append("]}");
++  }
++}
+diff --git a/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/blockmanagement/BlockInfoUnderConstructionContiguous.java b/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/blockmanagement/BlockInfoUnderConstructionContiguous.java
+new file mode 100644
+index 0000000..c66675a
+--- /dev/null
++++ b/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/blockmanagement/BlockInfoUnderConstructionContiguous.java
+@@ -0,0 +1,110 @@
++/**
++ * Licensed to the Apache Software Foundation (ASF) under one
++ * or more contributor license agreements.  See the NOTICE file
++ * distributed with this work for additional information
++ * regarding copyright ownership.  The ASF licenses this file
++ * to you under the Apache License, Version 2.0 (the
++ * "License"); you may not use this file except in compliance
++ * with the License.  You may obtain a copy of the License at
++ *
++ *     http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.apache.hadoop.hdfs.server.blockmanagement;
++
++import com.google.common.base.Preconditions;
++import org.apache.hadoop.hdfs.protocol.Block;
++import org.apache.hadoop.hdfs.server.common.HdfsServerConstants;
++
++import java.util.ArrayList;
++
++/**
++ * Subclass of {@link BlockInfoUnderConstruction}, representing a block under
++ * the contiguous (instead of striped) layout.
++ */
++public class BlockInfoUnderConstructionContiguous extends
++    BlockInfoUnderConstruction {
++  /**
++   * Create block and set its state to
++   * {@link HdfsServerConstants.BlockUCState#UNDER_CONSTRUCTION}.
++   */
++  public BlockInfoUnderConstructionContiguous(Block blk, short replication) {
++    this(blk, replication, HdfsServerConstants.BlockUCState.UNDER_CONSTRUCTION,
++        null);
++  }
++
++  /**
++   * Create a block that is currently being constructed.
++   */
++  public BlockInfoUnderConstructionContiguous(Block blk, short replication,
++      HdfsServerConstants.BlockUCState state, DatanodeStorageInfo[] targets) {
++    super(blk, replication);
++    Preconditions.checkState(getBlockUCState() !=
++        HdfsServerConstants.BlockUCState.COMPLETE,
++        "BlockInfoUnderConstructionContiguous cannot be in COMPLETE state");
++    this.blockUCState = state;
++    setExpectedLocations(targets);
++  }
++
++  /**
++   * Convert an under construction block to a complete block.
++   *
++   * @return BlockInfo - a complete block.
++   * @throws IOException if the state of the block
++   * (the generation stamp and the length) has not been committed by
++   * the client or it does not have at least a minimal number of replicas
++   * reported from data-nodes.
++   */
++  @Override
++  public BlockInfoContiguous convertToCompleteBlock() {
++    Preconditions.checkState(getBlockUCState() !=
++        HdfsServerConstants.BlockUCState.COMPLETE,
++        "Trying to convert a COMPLETE block");
++    return new BlockInfoContiguous(this);
++  }
++
++  @Override
++  boolean addStorage(DatanodeStorageInfo storage) {
++    return ContiguousBlockStorageOp.addStorage(this, storage);
++  }
++
++  @Override
++  boolean removeStorage(DatanodeStorageInfo storage) {
++    return ContiguousBlockStorageOp.removeStorage(this, storage);
++  }
++
++  @Override
++  public int numNodes() {
++    return ContiguousBlockStorageOp.numNodes(this);
++  }
++
++  @Override
++  void replaceBlock(BlockInfo newBlock) {
++    ContiguousBlockStorageOp.replaceBlock(this, newBlock);
++  }
++
++  @Override
++  public void setExpectedLocations(DatanodeStorageInfo[] targets) {
++    int numLocations = targets == null ? 0 : targets.length;
++    this.replicas = new ArrayList<>(numLocations);
++    for(int i = 0; i < numLocations; i++) {
++      replicas.add(
++          new ReplicaUnderConstruction(this, targets[i], HdfsServerConstants.ReplicaState.RBW));
++    }
++  }
++
++  @Override
++  public Block getTruncateBlock() {
++    return truncateBlock;
++  }
++
++  @Override
++  public void setTruncateBlock(Block recoveryBlock) {
++    this.truncateBlock = recoveryBlock;
++  }
++}
+diff --git a/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/blockmanagement/BlockManager.java b/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/blockmanagement/BlockManager.java
+index 4562d94..ebc9017 100644
+--- a/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/blockmanagement/BlockManager.java
++++ b/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/blockmanagement/BlockManager.java
+@@ -602,7 +602,7 @@ public boolean checkMinReplication(Block block) {
+    * of replicas reported from data-nodes.
+    */
+   private static boolean commitBlock(
+-      final BlockInfoContiguousUnderConstruction block, final Block commitBlock)
++      final BlockInfoUnderConstruction block, final Block commitBlock)
+       throws IOException {
+     if (block.getBlockUCState() == BlockUCState.COMMITTED)
+       return false;
+@@ -634,7 +634,7 @@ public boolean commitOrCompleteLastBlock(BlockCollection bc,
+       return false; // already completed (e.g. by syncBlock)
+     
+     final boolean b = commitBlock(
+-        (BlockInfoContiguousUnderConstruction) lastBlock, commitBlock);
++        (BlockInfoUnderConstruction) lastBlock, commitBlock);
+     if(countNodes(lastBlock).liveReplicas() >= minReplication)
+       completeBlock(bc, bc.numBlocks()-1, false);
+     return b;
+@@ -654,8 +654,8 @@ private BlockInfo completeBlock(final BlockCollection bc,
+     BlockInfo curBlock = bc.getBlocks()[blkIndex];
+     if(curBlock.isComplete())
+       return curBlock;
+-    BlockInfoContiguousUnderConstruction ucBlock =
+-        (BlockInfoContiguousUnderConstruction) curBlock;
++    BlockInfoUnderConstruction ucBlock =
++        (BlockInfoUnderConstruction) curBlock;
+     int numNodes = ucBlock.numNodes();
+     if (!force && numNodes < minReplication)
+       throw new IOException("Cannot complete block: " +
+@@ -697,7 +697,7 @@ private BlockInfo completeBlock(final BlockCollection bc,
+    * when tailing edit logs as a Standby.
+    */
+   public BlockInfo forceCompleteBlock(final BlockCollection bc,
+-      final BlockInfoContiguousUnderConstruction block) throws IOException {
++      final BlockInfoUnderConstruction block) throws IOException {
+     block.commitBlock(block);
+     return completeBlock(bc, block, true);
+   }
+@@ -728,7 +728,7 @@ public LocatedBlock convertLastBlockToUnderConstruction(
+ 
+     DatanodeStorageInfo[] targets = getStorages(oldBlock);
+ 
+-    BlockInfoContiguousUnderConstruction ucBlock =
++    BlockInfoUnderConstruction ucBlock =
+         bc.setLastBlock(oldBlock, targets);
+     blocksMap.replaceBlock(ucBlock);
+ 
+@@ -830,14 +830,14 @@ private LocatedBlock createLocatedBlock(final BlockInfo blk, final long pos,
+   /** @return a LocatedBlock for the given block */
+   private LocatedBlock createLocatedBlock(final BlockInfo blk, final long pos
+       ) throws IOException {
+-    if (blk instanceof BlockInfoContiguousUnderConstruction) {
++    if (blk instanceof BlockInfoUnderConstruction) {
+       if (blk.isComplete()) {
+         throw new IOException(
+             "blk instanceof BlockInfoUnderConstruction && blk.isComplete()"
+             + ", blk=" + blk);
+       }
+-      final BlockInfoContiguousUnderConstruction uc =
+-          (BlockInfoContiguousUnderConstruction) blk;
++      final BlockInfoUnderConstruction uc =
++          (BlockInfoUnderConstruction) blk;
+       final DatanodeStorageInfo[] storages = uc.getExpectedStorageLocations();
+       final ExtendedBlock eb = new ExtendedBlock(namesystem.getBlockPoolId(), blk);
+       return newLocatedBlock(eb, storages, pos, false);
+@@ -1744,11 +1744,11 @@ public long requestBlockReportLeaseId(DatanodeRegistration nodeReg) {
+    * reported by the datanode in the block report. 
+    */
+   static class StatefulBlockInfo {
+-    final BlockInfoContiguousUnderConstruction storedBlock;
++    final BlockInfoUnderConstruction storedBlock;
+     final Block reportedBlock;
+     final ReplicaState reportedState;
+     
+-    StatefulBlockInfo(BlockInfoContiguousUnderConstruction storedBlock,
++    StatefulBlockInfo(BlockInfoUnderConstruction storedBlock,
+         Block reportedBlock, ReplicaState reportedState) {
+       this.storedBlock = storedBlock;
+       this.reportedBlock = reportedBlock;
+@@ -1789,7 +1789,7 @@ public long requestBlockReportLeaseId(DatanodeRegistration nodeReg) {
+ 
+     BlockToMarkCorrupt(BlockInfo stored, long gs, String reason,
+         Reason reasonCode) {
+-      this(new BlockInfoContiguous((BlockInfoContiguous)stored), stored,
++      this(new BlockInfoContiguous(stored), stored,
+           reason, reasonCode);
+       //the corrupted block in datanode has a different generation stamp
+       corrupted.setGenerationStamp(gs);
+@@ -2148,13 +2148,13 @@ private void processFirstBlockReport(
+       
+       // If block is under construction, add this replica to its list
+       if (isBlockUnderConstruction(storedBlock, ucState, reportedState)) {
+-        ((BlockInfoContiguousUnderConstruction)storedBlock)
++        ((BlockInfoUnderConstruction)storedBlock)
+             .addReplicaIfNotPresent(storageInfo, iblk, reportedState);
+         // OpenFileBlocks only inside snapshots also will be added to safemode
+         // threshold. So we need to update such blocks to safemode
+         // refer HDFS-5283
+-        BlockInfoContiguousUnderConstruction blockUC =
+-            (BlockInfoContiguousUnderConstruction) storedBlock;
++        BlockInfoUnderConstruction blockUC =
++            (BlockInfoUnderConstruction) storedBlock;
+         if (namesystem.isInSnapshot(blockUC)) {
+           int numOfReplicas = blockUC.getNumExpectedLocations();
+           namesystem.incrementSafeBlockCount(numOfReplicas);
+@@ -2309,7 +2309,7 @@ private BlockInfo processReportedBlock(
+ 
+     if (isBlockUnderConstruction(storedBlock, ucState, reportedState)) {
+       toUC.add(new StatefulBlockInfo(
+-          (BlockInfoContiguousUnderConstruction) storedBlock,
++          (BlockInfoUnderConstruction) storedBlock,
+           new Block(block), reportedState));
+       return storedBlock;
+     }
+@@ -2500,7 +2500,7 @@ private boolean isBlockUnderConstruction(BlockInfo storedBlock,
+ 
+   void addStoredBlockUnderConstruction(StatefulBlockInfo ucBlock,
+       DatanodeStorageInfo storageInfo) throws IOException {
+-    BlockInfoContiguousUnderConstruction block = ucBlock.storedBlock;
++    BlockInfoUnderConstruction block = ucBlock.storedBlock;
+     block.addReplicaIfNotPresent(
+         storageInfo, ucBlock.reportedBlock, ucBlock.reportedState);
+ 
+@@ -2561,7 +2561,7 @@ private Block addStoredBlock(final BlockInfo block,
+     assert block != null && namesystem.hasWriteLock();
+     BlockInfo storedBlock;
+     DatanodeDescriptor node = storageInfo.getDatanodeDescriptor();
+-    if (block instanceof BlockInfoContiguousUnderConstruction) {
++    if (block instanceof BlockInfoUnderConstruction) {
+       //refresh our copy in case the block got completed in another thread
+       storedBlock = blocksMap.getStoredBlock(block);
+     } else {
+@@ -3499,8 +3499,8 @@ public boolean checkBlocksProperlyReplicated(
+       String src, BlockInfo[] blocks) {
+     for (BlockInfo b: blocks) {
+       if (!b.isComplete()) {
+-        final BlockInfoContiguousUnderConstruction uc =
+-            (BlockInfoContiguousUnderConstruction)b;
++        final BlockInfoUnderConstruction uc =
++            (BlockInfoUnderConstruction)b;
+         final int numNodes = b.numNodes();
+         LOG.info("BLOCK* " + b + " is not COMPLETE (ucState = "
+           + uc.getBlockUCState() + ", replication# = " + numNodes
+diff --git a/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/blockmanagement/ContiguousBlockStorageOp.java b/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/blockmanagement/ContiguousBlockStorageOp.java
+new file mode 100644
+index 0000000..092f65e
+--- /dev/null
++++ b/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/blockmanagement/ContiguousBlockStorageOp.java
+@@ -0,0 +1,106 @@
++/**
++ * Licensed to the Apache Software Foundation (ASF) under one
++ * or more contributor license agreements.  See the NOTICE file
++ * distributed with this work for additional information
++ * regarding copyright ownership.  The ASF licenses this file
++ * to you under the Apache License, Version 2.0 (the
++ * "License"); you may not use this file except in compliance
++ * with the License.  You may obtain a copy of the License at
++ *
++ *     http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.apache.hadoop.hdfs.server.blockmanagement;
++
++import com.google.common.base.Preconditions;
++
++/**
++ * Utility class with logic on managing storage locations shared between
++ * complete and under-construction blocks under the contiguous format --
++ * {@link BlockInfoContiguous} and
++ * {@link BlockInfoUnderConstructionContiguous}.
++ */
++class ContiguousBlockStorageOp {
++  /**
++   * Ensure that there is enough  space to include num more triplets.
++   * @return first free triplet index.
++   */
++  private static int ensureCapacity(BlockInfo b, int num) {
++    Preconditions.checkArgument(b.triplets != null,
++        "BlockInfo is not initialized");
++    int last = b.numNodes();
++    if (b.triplets.length >= (last+num)*3) {
++      return last;
++    }
++    /* Not enough space left. Create a new array. Should normally
++     * happen only when replication is manually increased by the user. */
++    Object[] old = b.triplets;
++    b.triplets = new Object[(last+num)*3];
++    System.arraycopy(old, 0, b.triplets, 0, last * 3);
++    return last;
++  }
++
++  static boolean addStorage(BlockInfo b, DatanodeStorageInfo storage) {
++    // find the last null node
++    int lastNode = ensureCapacity(b, 1);
++    b.setStorageInfo(lastNode, storage);
++    b.setNext(lastNode, null);
++    b.setPrevious(lastNode, null);
++    return true;
++  }
++
++  static boolean removeStorage(BlockInfo b,
++      DatanodeStorageInfo storage) {
++    int dnIndex = b.findStorageInfo(storage);
++    if (dnIndex < 0) { // the node is not found
++      return false;
++    }
++    Preconditions.checkArgument(b.getPrevious(dnIndex) == null &&
++            b.getNext(dnIndex) == null,
++        "Block is still in the list and must be removed first.");
++    // find the last not null node
++    int lastNode = b.numNodes()-1;
++    // replace current node triplet by the lastNode one
++    b.setStorageInfo(dnIndex, b.getStorageInfo(lastNode));
++    b.setNext(dnIndex, b.getNext(lastNode));
++    b.setPrevious(dnIndex, b.getPrevious(lastNode));
++    // set the last triplet to null
++    b.setStorageInfo(lastNode, null);
++    b.setNext(lastNode, null);
++    b.setPrevious(lastNode, null);
++    return true;
++  }
++
++  static int numNodes(BlockInfo b) {
++    Preconditions.checkArgument(b.triplets != null,
++        "BlockInfo is not initialized");
++    Preconditions.checkArgument(b.triplets.length % 3 == 0,
++        "Malformed BlockInfo");
++
++    for (int idx = b.getCapacity()-1; idx >= 0; idx--) {
++      if (b.getDatanode(idx) != null) {
++        return idx + 1;
++      }
++    }
++    return 0;
++  }
++
++  static void replaceBlock(BlockInfo b, BlockInfo newBlock) {
++    for (int i = b.numNodes() - 1; i >= 0; i--) {
++      final DatanodeStorageInfo storage = b.getStorageInfo(i);
++      final boolean removed = storage.removeBlock(b);
++      Preconditions.checkState(removed, "currentBlock not found.");
++
++      final DatanodeStorageInfo.AddBlockResult result = storage.addBlock(
++          newBlock);
++      Preconditions.checkState(
++          result == DatanodeStorageInfo.AddBlockResult.ADDED,
++          "newBlock already exists.");
++    }
++  }
++}
+diff --git a/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/blockmanagement/DatanodeDescriptor.java b/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/blockmanagement/DatanodeDescriptor.java
+index 02abc1d..dd7b301 100644
+--- a/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/blockmanagement/DatanodeDescriptor.java
++++ b/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/blockmanagement/DatanodeDescriptor.java
+@@ -219,8 +219,8 @@ public CachedBlocksList getPendingUncached() {
+   /** A queue of blocks to be replicated by this datanode */
+   private final BlockQueue<BlockTargetPair> replicateBlocks = new BlockQueue<BlockTargetPair>();
+   /** A queue of blocks to be recovered by this datanode */
+-  private final BlockQueue<BlockInfoContiguousUnderConstruction> recoverBlocks =
+-                                new BlockQueue<BlockInfoContiguousUnderConstruction>();
++  private final BlockQueue<BlockInfoUnderConstruction> recoverBlocks =
++                                new BlockQueue<BlockInfoUnderConstruction>();
+   /** A set of blocks to be invalidated by this datanode */
+   private final LightWeightHashSet<Block> invalidateBlocks = new LightWeightHashSet<Block>();
+ 
+@@ -599,7 +599,7 @@ void addBlockToBeReplicated(Block block, DatanodeStorageInfo[] targets) {
+   /**
+    * Store block recovery work.
+    */
+-  void addBlockToBeRecovered(BlockInfoContiguousUnderConstruction block) {
++  void addBlockToBeRecovered(BlockInfoUnderConstruction block) {
+     if(recoverBlocks.contains(block)) {
+       // this prevents adding the same block twice to the recovery queue
+       BlockManager.LOG.info(block + " is already in the recovery queue");
+@@ -641,11 +641,12 @@ int getNumberOfBlocksToBeInvalidated() {
+     return replicateBlocks.poll(maxTransfers);
+   }
+ 
+-  public BlockInfoContiguousUnderConstruction[] getLeaseRecoveryCommand(int maxTransfers) {
+-    List<BlockInfoContiguousUnderConstruction> blocks = recoverBlocks.poll(maxTransfers);
++  public BlockInfoUnderConstruction[] getLeaseRecoveryCommand(
++      int maxTransfers) {
++    List<BlockInfoUnderConstruction> blocks = recoverBlocks.poll(maxTransfers);
+     if(blocks == null)
+       return null;
+-    return blocks.toArray(new BlockInfoContiguousUnderConstruction[blocks.size()]);
++    return blocks.toArray(new BlockInfoUnderConstruction[blocks.size()]);
+   }
+ 
+   /**
+diff --git a/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/blockmanagement/DatanodeManager.java b/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/blockmanagement/DatanodeManager.java
+index 58349cc..8143fb4 100644
+--- a/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/blockmanagement/DatanodeManager.java
++++ b/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/blockmanagement/DatanodeManager.java
+@@ -1380,12 +1380,12 @@ private void setDatanodeDead(DatanodeDescriptor node) {
+         }
+ 
+         //check lease recovery
+-        BlockInfoContiguousUnderConstruction[] blocks = nodeinfo
++        BlockInfoUnderConstruction[] blocks = nodeinfo
+             .getLeaseRecoveryCommand(Integer.MAX_VALUE);
+         if (blocks != null) {
+           BlockRecoveryCommand brCommand = new BlockRecoveryCommand(
+               blocks.length);
+-          for (BlockInfoContiguousUnderConstruction b : blocks) {
++          for (BlockInfoUnderConstruction b : blocks) {
+             final DatanodeStorageInfo[] storages = b.getExpectedStorageLocations();
+             // Skip stale nodes during recovery - not heart beated for some time (30s by default).
+             final List<DatanodeStorageInfo> recoveryLocations =
+diff --git a/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/FSDirWriteFileOp.java b/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/FSDirWriteFileOp.java
+index 3b5f973..4830d5d 100644
+--- a/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/FSDirWriteFileOp.java
++++ b/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/FSDirWriteFileOp.java
+@@ -43,7 +43,8 @@
+ import org.apache.hadoop.hdfs.protocol.QuotaExceededException;
+ import org.apache.hadoop.hdfs.security.token.block.BlockTokenIdentifier;
+ import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfo;
+-import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfoContiguousUnderConstruction;
++import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfoUnderConstruction;
++import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfoUnderConstructionContiguous;
+ import org.apache.hadoop.hdfs.server.blockmanagement.BlockManager;
+ import org.apache.hadoop.hdfs.server.blockmanagement.DatanodeStorageInfo;
+ import org.apache.hadoop.hdfs.server.common.HdfsServerConstants;
+@@ -73,7 +74,7 @@ static boolean unprotectedRemoveBlock(
+       Block block) throws IOException {
+     // modify file-> block and blocksMap
+     // fileNode should be under construction
+-    BlockInfoContiguousUnderConstruction uc = fileNode.removeLastBlock(block);
++    BlockInfoUnderConstruction uc = fileNode.removeLastBlock(block);
+     if (uc == null) {
+       return false;
+     }
+@@ -236,7 +237,7 @@ static LocatedBlock storeAllocatedBlock(FSNamesystem fsn, String src,
+       } else {
+         // add new chosen targets to already allocated block and return
+         BlockInfo lastBlockInFile = pendingFile.getLastBlock();
+-        ((BlockInfoContiguousUnderConstruction) lastBlockInFile)
++        ((BlockInfoUnderConstruction) lastBlockInFile)
+             .setExpectedLocations(targets);
+         offset = pendingFile.computeFileSize();
+         return makeLocatedBlock(fsn, lastBlockInFile, targets, offset);
+@@ -520,8 +521,8 @@ private static BlockInfo addBlock(
+           fileINode.getPreferredBlockReplication(), true);
+ 
+       // associate new last block for the file
+-      BlockInfoContiguousUnderConstruction blockInfo =
+-        new BlockInfoContiguousUnderConstruction(
++      BlockInfoUnderConstruction blockInfo =
++        new BlockInfoUnderConstructionContiguous(
+             block,
+             fileINode.getFileReplication(),
+             HdfsServerConstants.BlockUCState.UNDER_CONSTRUCTION,
+@@ -662,8 +663,8 @@ private static FileState analyzeFileState(
+             "allocation of a new block in " + src + ". Returning previously" +
+             " allocated block " + lastBlockInFile);
+         long offset = file.computeFileSize();
+-        BlockInfoContiguousUnderConstruction lastBlockUC =
+-            (BlockInfoContiguousUnderConstruction) lastBlockInFile;
++        BlockInfoUnderConstruction lastBlockUC =
++            (BlockInfoUnderConstruction) lastBlockInFile;
+         onRetryBlock[0] = makeLocatedBlock(fsn, lastBlockInFile,
+             lastBlockUC.getExpectedStorageLocations(), offset);
+         return new FileState(file, src, iip);
+diff --git a/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/FSEditLogLoader.java b/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/FSEditLogLoader.java
+index 3de6760..df01edd 100644
+--- a/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/FSEditLogLoader.java
++++ b/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/FSEditLogLoader.java
+@@ -45,7 +45,8 @@
+ import org.apache.hadoop.hdfs.protocol.LayoutVersion;
+ import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfo;
+ import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfoContiguous;
+-import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfoContiguousUnderConstruction;
++import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfoUnderConstruction;
++import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfoUnderConstructionContiguous;
+ import org.apache.hadoop.hdfs.server.common.HdfsServerConstants;
+ import org.apache.hadoop.hdfs.server.common.HdfsServerConstants.RollingUpgradeStartupOption;
+ import org.apache.hadoop.hdfs.server.common.HdfsServerConstants.StartupOption;
+@@ -960,16 +961,16 @@ private void addNewBlock(FSDirectory fsDir, AddBlockOp op, INodeFile file)
+       }
+       
+       oldLastBlock.setNumBytes(pBlock.getNumBytes());
+-      if (oldLastBlock instanceof BlockInfoContiguousUnderConstruction) {
++      if (oldLastBlock instanceof BlockInfoUnderConstruction) {
+         fsNamesys.getBlockManager().forceCompleteBlock(file,
+-            (BlockInfoContiguousUnderConstruction) oldLastBlock);
++            (BlockInfoUnderConstruction) oldLastBlock);
+         fsNamesys.getBlockManager().processQueuedMessagesForBlock(pBlock);
+       }
+     } else { // the penultimate block is null
+       Preconditions.checkState(oldBlocks == null || oldBlocks.length == 0);
+     }
+     // add the new block
+-    BlockInfo newBI = new BlockInfoContiguousUnderConstruction(
++    BlockInfo newBI = new BlockInfoUnderConstructionContiguous(
+           newBlock, file.getPreferredBlockReplication());
+     fsNamesys.getBlockManager().addBlockCollection(newBI, file);
+     file.addBlock(newBI);
+@@ -1010,11 +1011,11 @@ private void updateBlocks(FSDirectory fsDir, BlockListUpdatingOp op,
+         oldBlock.getGenerationStamp() != newBlock.getGenerationStamp();
+       oldBlock.setGenerationStamp(newBlock.getGenerationStamp());
+       
+-      if (oldBlock instanceof BlockInfoContiguousUnderConstruction &&
++      if (oldBlock instanceof BlockInfoUnderConstruction &&
+           (!isLastBlock || op.shouldCompleteLastBlock())) {
+         changeMade = true;
+         fsNamesys.getBlockManager().forceCompleteBlock(file,
+-            (BlockInfoContiguousUnderConstruction) oldBlock);
++            (BlockInfoUnderConstruction) oldBlock);
+       }
+       if (changeMade) {
+         // The state or gen-stamp of the block has changed. So, we may be
+@@ -1049,7 +1050,7 @@ private void updateBlocks(FSDirectory fsDir, BlockListUpdatingOp op,
+           // TODO: shouldn't this only be true for the last block?
+           // what about an old-version fsync() where fsync isn't called
+           // until several blocks in?
+-          newBI = new BlockInfoContiguousUnderConstruction(
++          newBI = new BlockInfoUnderConstructionContiguous(
+               newBlock, file.getPreferredBlockReplication());
+         } else {
+           // OP_CLOSE should add finalized blocks. This code path
+diff --git a/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/FSImageFormat.java b/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/FSImageFormat.java
+index 30517d0..2305e31 100644
+--- a/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/FSImageFormat.java
++++ b/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/FSImageFormat.java
+@@ -54,7 +54,7 @@
+ import org.apache.hadoop.hdfs.protocol.LayoutVersion.Feature;
+ import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfo;
+ import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfoContiguous;
+-import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfoContiguousUnderConstruction;
++import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfoUnderConstructionContiguous;
+ import org.apache.hadoop.hdfs.server.blockmanagement.BlockManager;
+ import org.apache.hadoop.hdfs.server.common.HdfsServerConstants;
+ import org.apache.hadoop.hdfs.server.common.HdfsServerConstants.StartupOption;
+@@ -777,8 +777,9 @@ INode loadINode(final byte[] localName, boolean isSnapshotINode,
+             // convert the last block to BlockUC
+             if (blocks.length > 0) {
+               BlockInfo lastBlk = blocks[blocks.length - 1];
+-              blocks[blocks.length - 1] = new BlockInfoContiguousUnderConstruction(
+-                  lastBlk, replication);
++              blocks[blocks.length - 1] =
++                  new BlockInfoUnderConstructionContiguous(
++                      lastBlk, replication);
+             }
+           }
+         }
+diff --git a/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/FSImageFormatPBINode.java b/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/FSImageFormatPBINode.java
+index e8378e5..d90751c 100644
+--- a/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/FSImageFormatPBINode.java
++++ b/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/FSImageFormatPBINode.java
+@@ -44,7 +44,7 @@
+ import org.apache.hadoop.hdfs.protocolPB.PBHelper;
+ import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfo;
+ import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfoContiguous;
+-import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfoContiguousUnderConstruction;
++import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfoUnderConstructionContiguous;
+ import org.apache.hadoop.hdfs.server.blockmanagement.BlockManager;
+ import org.apache.hadoop.hdfs.server.namenode.FSImageFormatProtobuf.LoaderContext;
+ import org.apache.hadoop.hdfs.server.namenode.FSImageFormatProtobuf.SaverContext;
+@@ -364,8 +364,8 @@ private INodeFile loadINodeFile(INodeSection.INode n) {
+         if (blocks.length > 0) {
+           BlockInfo lastBlk = file.getLastBlock();
+           // replace the last block of file
+-          file.setBlock(file.numBlocks() - 1, new BlockInfoContiguousUnderConstruction(
+-              lastBlk, replication));
++          file.setBlock(file.numBlocks() - 1,
++              new BlockInfoUnderConstructionContiguous(lastBlk, replication));
+         }
+       }
+       return file;
+diff --git a/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/FSImageSerialization.java b/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/FSImageSerialization.java
+index f71cf0b..2dc6252 100644
+--- a/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/FSImageSerialization.java
++++ b/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/FSImageSerialization.java
+@@ -35,7 +35,7 @@
+ import org.apache.hadoop.hdfs.protocol.LayoutVersion;
+ import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfo;
+ import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfoContiguous;
+-import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfoContiguousUnderConstruction;
++import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfoUnderConstructionContiguous;
+ import org.apache.hadoop.hdfs.server.common.HdfsServerConstants.BlockUCState;
+ import org.apache.hadoop.hdfs.server.namenode.snapshot.SnapshotFSImageFormat;
+ import org.apache.hadoop.hdfs.server.namenode.snapshot.SnapshotFSImageFormat.ReferenceMap;
+@@ -137,7 +137,7 @@ static INodeFile readINodeUnderConstruction(
+     // last block is UNDER_CONSTRUCTION
+     if(numBlocks > 0) {
+       blk.readFields(in);
+-      blocks[i] = new BlockInfoContiguousUnderConstruction(
++      blocks[i] = new BlockInfoUnderConstructionContiguous(
+         blk, blockReplication, BlockUCState.UNDER_CONSTRUCTION, null);
+     }
+     PermissionStatus perm = PermissionStatus.read(in);
+diff --git a/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/FSNamesystem.java b/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/FSNamesystem.java
+index d3b32da..ef53692 100644
+--- a/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/FSNamesystem.java
++++ b/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/FSNamesystem.java
+@@ -204,7 +204,8 @@
+ import org.apache.hadoop.hdfs.server.blockmanagement.BlockCollection;
+ import org.apache.hadoop.hdfs.server.blockmanagement.BlockIdManager;
+ import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfo;
+-import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfoContiguousUnderConstruction;
++import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfoUnderConstruction;
++import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfoUnderConstructionContiguous;
+ import org.apache.hadoop.hdfs.server.blockmanagement.BlockManager;
+ import org.apache.hadoop.hdfs.server.blockmanagement.DatanodeDescriptor;
+ import org.apache.hadoop.hdfs.server.blockmanagement.DatanodeManager;
+@@ -2003,7 +2004,7 @@ boolean truncateInternal(String src, long newLength,
+     final BlockInfo last = file.getLastBlock();
+     if (last != null && last.getBlockUCState() == BlockUCState.UNDER_RECOVERY) {
+       final Block truncateBlock
+-          = ((BlockInfoContiguousUnderConstruction)last).getTruncateBlock();
++          = ((BlockInfoUnderConstruction)last).getTruncateBlock();
+       if (truncateBlock != null) {
+         final long truncateLength = file.computeFileSize(false, false)
+             + truncateBlock.getNumBytes();
+@@ -2082,11 +2083,11 @@ Block prepareFileForTruncate(INodesInPath iip,
+               nextGenerationStamp(blockIdManager.isLegacyBlock(oldBlock)));
+     }
+ 
+-    BlockInfoContiguousUnderConstruction truncatedBlockUC;
++    BlockInfoUnderConstruction truncatedBlockUC;
+     if(shouldCopyOnTruncate) {
+       // Add new truncateBlock into blocksMap and
+       // use oldBlock as a source for copy-on-truncate recovery
+-      truncatedBlockUC = new BlockInfoContiguousUnderConstruction(newBlock,
++      truncatedBlockUC = new BlockInfoUnderConstructionContiguous(newBlock,
+           file.getPreferredBlockReplication());
+       truncatedBlockUC.setNumBytes(oldBlock.getNumBytes() - lastBlockDelta);
+       truncatedBlockUC.setTruncateBlock(oldBlock);
+@@ -2102,7 +2103,7 @@ Block prepareFileForTruncate(INodesInPath iip,
+       blockManager.convertLastBlockToUnderConstruction(file, lastBlockDelta);
+       oldBlock = file.getLastBlock();
+       assert !oldBlock.isComplete() : "oldBlock should be under construction";
+-      truncatedBlockUC = (BlockInfoContiguousUnderConstruction) oldBlock;
++      truncatedBlockUC = (BlockInfoUnderConstruction) oldBlock;
+       truncatedBlockUC.setTruncateBlock(new Block(oldBlock));
+       truncatedBlockUC.getTruncateBlock().setNumBytes(
+           oldBlock.getNumBytes() - lastBlockDelta);
+@@ -3519,7 +3520,8 @@ boolean internalReleaseLease(Lease lease, String src, INodesInPath iip,
+       throw new AlreadyBeingCreatedException(message);
+     case UNDER_CONSTRUCTION:
+     case UNDER_RECOVERY:
+-      final BlockInfoContiguousUnderConstruction uc = (BlockInfoContiguousUnderConstruction)lastBlock;
++      final BlockInfoUnderConstruction uc =
++          (BlockInfoUnderConstruction)lastBlock;
+       // determine if last block was intended to be truncated
+       Block recoveryBlock = uc.getTruncateBlock();
+       boolean truncateRecovery = recoveryBlock != null;
+@@ -3635,7 +3637,7 @@ BlockInfo getStoredBlock(Block block) {
+   }
+   
+   @Override
+-  public boolean isInSnapshot(BlockInfoContiguousUnderConstruction blockUC) {
++  public boolean isInSnapshot(BlockInfoUnderConstruction blockUC) {
+     assert hasReadLock();
+     final BlockCollection bc = blockUC.getBlockCollection();
+     if (bc == null || !(bc instanceof INodeFile)
+@@ -3682,7 +3684,7 @@ void commitBlockSynchronization(ExtendedBlock oldBlock,
+     waitForLoadingFSImage();
+     writeLock();
+     boolean copyTruncate = false;
+-    BlockInfoContiguousUnderConstruction truncatedBlock = null;
++    BlockInfoUnderConstruction truncatedBlock = null;
+     try {
+       checkOperation(OperationCategory.WRITE);
+       // If a DN tries to commit to the standby, the recovery will
+@@ -3739,7 +3741,7 @@ void commitBlockSynchronization(ExtendedBlock oldBlock,
+         return;
+       }
+ 
+-      truncatedBlock = (BlockInfoContiguousUnderConstruction) iFile
++      truncatedBlock = (BlockInfoUnderConstruction) iFile
+           .getLastBlock();
+       long recoveryId = truncatedBlock.getBlockRecoveryId();
+       copyTruncate = truncatedBlock.getBlockId() != storedBlock.getBlockId();
+@@ -5774,8 +5776,8 @@ private void updatePipelineInternal(String clientName, ExtendedBlock oldBlock,
+     assert hasWriteLock();
+     // check the vadility of the block and lease holder name
+     final INodeFile pendingFile = checkUCBlock(oldBlock, clientName);
+-    final BlockInfoContiguousUnderConstruction blockinfo
+-        = (BlockInfoContiguousUnderConstruction)pendingFile.getLastBlock();
++    final BlockInfoUnderConstruction blockinfo
++        = (BlockInfoUnderConstruction)pendingFile.getLastBlock();
+ 
+     // check new GS & length: this is not expected
+     if (newBlock.getGenerationStamp() <= blockinfo.getGenerationStamp() ||
+diff --git a/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/FileUnderConstructionFeature.java b/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/FileUnderConstructionFeature.java
+index d07ae1f..74c5d09 100644
+--- a/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/FileUnderConstructionFeature.java
++++ b/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/FileUnderConstructionFeature.java
+@@ -21,7 +21,7 @@
+ 
+ import org.apache.hadoop.classification.InterfaceAudience;
+ import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfo;
+-import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfoContiguousUnderConstruction;
++import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfoUnderConstruction;
+ import org.apache.hadoop.hdfs.server.namenode.INode.BlocksMapUpdateInfo;
+ 
+ /**
+@@ -61,7 +61,7 @@ void updateLengthOfLastBlock(INodeFile f, long lastBlockLength)
+     BlockInfo lastBlock = f.getLastBlock();
+     assert (lastBlock != null) : "The last block for path "
+         + f.getFullPathName() + " is null when updating its length";
+-    assert (lastBlock instanceof BlockInfoContiguousUnderConstruction)
++    assert (lastBlock instanceof BlockInfoUnderConstruction)
+         : "The last block for path " + f.getFullPathName()
+             + " is not a BlockInfoUnderConstruction when updating its length";
+     lastBlock.setNumBytes(lastBlockLength);
+@@ -76,9 +76,9 @@ void cleanZeroSizeBlock(final INodeFile f,
+       final BlocksMapUpdateInfo collectedBlocks) {
+     final BlockInfo[] blocks = f.getBlocks();
+     if (blocks != null && blocks.length > 0
+-        && blocks[blocks.length - 1] instanceof BlockInfoContiguousUnderConstruction) {
+-      BlockInfoContiguousUnderConstruction lastUC =
+-          (BlockInfoContiguousUnderConstruction) blocks[blocks.length - 1];
++        && blocks[blocks.length - 1] instanceof BlockInfoUnderConstruction) {
++      BlockInfoUnderConstruction lastUC =
++          (BlockInfoUnderConstruction) blocks[blocks.length - 1];
+       if (lastUC.getNumBytes() == 0) {
+         // this is a 0-sized block. do not need check its UC state here
+         collectedBlocks.addDeleteBlock(lastUC);
+diff --git a/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/INodeFile.java b/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/INodeFile.java
+index 294323c..4590eec 100644
+--- a/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/INodeFile.java
++++ b/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/INodeFile.java
+@@ -37,7 +37,7 @@
+ import org.apache.hadoop.hdfs.protocol.QuotaExceededException;
+ import org.apache.hadoop.hdfs.server.blockmanagement.BlockCollection;
+ import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfo;
+-import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfoContiguousUnderConstruction;
++import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfoUnderConstruction;
+ import org.apache.hadoop.hdfs.server.blockmanagement.BlockStoragePolicySuite;
+ import org.apache.hadoop.hdfs.server.blockmanagement.DatanodeStorageInfo;
+ import org.apache.hadoop.hdfs.server.common.HdfsServerConstants.BlockUCState;
+@@ -231,7 +231,7 @@ public void setBlock(int index, BlockInfo blk) {
+   }
+ 
+   @Override // BlockCollection, the file should be under construction
+-  public BlockInfoContiguousUnderConstruction setLastBlock(
++  public BlockInfoUnderConstruction setLastBlock(
+       BlockInfo lastBlock, DatanodeStorageInfo[] locations)
+       throws IOException {
+     Preconditions.checkState(isUnderConstruction(),
+@@ -240,7 +240,7 @@ public BlockInfoContiguousUnderConstruction setLastBlock(
+     if (numBlocks() == 0) {
+       throw new IOException("Failed to set last block: File is empty.");
+     }
+-    BlockInfoContiguousUnderConstruction ucBlock =
++    BlockInfoUnderConstruction ucBlock =
+       lastBlock.convertToBlockUnderConstruction(
+           BlockUCState.UNDER_CONSTRUCTION, locations);
+     setBlock(numBlocks() - 1, ucBlock);
+@@ -251,7 +251,7 @@ public BlockInfoContiguousUnderConstruction setLastBlock(
+    * Remove a block from the block list. This block should be
+    * the last one on the list.
+    */
+-  BlockInfoContiguousUnderConstruction removeLastBlock(Block oldblock) {
++  BlockInfoUnderConstruction removeLastBlock(Block oldblock) {
+     Preconditions.checkState(isUnderConstruction(),
+         "file is no longer under construction");
+     if (blocks == null || blocks.length == 0) {
+@@ -262,8 +262,8 @@ BlockInfoContiguousUnderConstruction removeLastBlock(Block oldblock) {
+       return null;
+     }
+ 
+-    BlockInfoContiguousUnderConstruction uc =
+-        (BlockInfoContiguousUnderConstruction)blocks[size_1];
++    BlockInfoUnderConstruction uc =
++        (BlockInfoUnderConstruction)blocks[size_1];
+     //copy to a new list
+     BlockInfo[] newlist = new BlockInfo[size_1];
+     System.arraycopy(blocks, 0, newlist, 0, size_1);
+@@ -689,7 +689,7 @@ public final long computeFileSize(boolean includesLastUcBlock,
+     final int last = blocks.length - 1;
+     //check if the last block is BlockInfoUnderConstruction
+     long size = blocks[last].getNumBytes();
+-    if (blocks[last] instanceof BlockInfoContiguousUnderConstruction) {
++    if (blocks[last] instanceof BlockInfoUnderConstruction) {
+        if (!includesLastUcBlock) {
+          size = 0;
+        } else if (usePreferredBlockSize4LastUcBlock) {
+diff --git a/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/Namesystem.java b/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/Namesystem.java
+index 3442e7b..40c4765 100644
+--- a/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/Namesystem.java
++++ b/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/Namesystem.java
+@@ -19,7 +19,7 @@
+ 
+ import org.apache.hadoop.classification.InterfaceAudience;
+ import org.apache.hadoop.hdfs.protocol.Block;
+-import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfoContiguousUnderConstruction;
++import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfoUnderConstruction;
+ import org.apache.hadoop.hdfs.server.namenode.NameNode.OperationCategory;
+ import org.apache.hadoop.hdfs.util.RwLock;
+ import org.apache.hadoop.ipc.StandbyException;
+@@ -45,5 +45,5 @@
+ 
+   public void checkOperation(OperationCategory read) throws StandbyException;
+ 
+-  public boolean isInSnapshot(BlockInfoContiguousUnderConstruction blockUC);
++  public boolean isInSnapshot(BlockInfoUnderConstruction blockUC);
+ }
+\ No newline at end of file
+diff --git a/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/snapshot/FileDiffList.java b/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/snapshot/FileDiffList.java
+index 6b8388e..d081a6b 100644
+--- a/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/snapshot/FileDiffList.java
++++ b/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/snapshot/FileDiffList.java
+@@ -22,7 +22,7 @@
+ 
+ import org.apache.hadoop.hdfs.protocol.Block;
+ import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfo;
+-import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfoContiguousUnderConstruction;
++import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfoUnderConstruction;
+ import org.apache.hadoop.hdfs.server.common.HdfsServerConstants;
+ import org.apache.hadoop.hdfs.server.namenode.INode;
+ import org.apache.hadoop.hdfs.server.namenode.INode.BlocksMapUpdateInfo;
+@@ -133,7 +133,7 @@ void combineAndCollectSnapshotBlocks(
+     Block dontRemoveBlock = null;
+     if (lastBlock != null && lastBlock.getBlockUCState().equals(
+         HdfsServerConstants.BlockUCState.UNDER_RECOVERY)) {
+-      dontRemoveBlock = ((BlockInfoContiguousUnderConstruction) lastBlock)
++      dontRemoveBlock = ((BlockInfoUnderConstruction) lastBlock)
+           .getTruncateBlock();
+     }
+     // Collect the remaining blocks of the file, ignoring truncate block
+diff --git a/hadoop-hdfs-project/hadoop-hdfs/src/test/java/org/apache/hadoop/hdfs/DFSTestUtil.java b/hadoop-hdfs-project/hadoop-hdfs/src/test/java/org/apache/hadoop/hdfs/DFSTestUtil.java
+index 50b85c0..d06b024 100644
+--- a/hadoop-hdfs-project/hadoop-hdfs/src/test/java/org/apache/hadoop/hdfs/DFSTestUtil.java
++++ b/hadoop-hdfs-project/hadoop-hdfs/src/test/java/org/apache/hadoop/hdfs/DFSTestUtil.java
+@@ -109,7 +109,7 @@
+ import org.apache.hadoop.hdfs.security.token.block.BlockTokenIdentifier;
+ import org.apache.hadoop.hdfs.security.token.block.ExportedBlockKeys;
+ import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfo;
+-import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfoContiguousUnderConstruction;
++import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfoUnderConstruction;
+ import org.apache.hadoop.hdfs.server.blockmanagement.BlockManager;
+ import org.apache.hadoop.hdfs.server.blockmanagement.BlockManagerTestUtil;
+ import org.apache.hadoop.hdfs.server.blockmanagement.DatanodeDescriptor;
+@@ -1612,9 +1612,9 @@ public static DatanodeDescriptor getExpectedPrimaryNode(NameNode nn,
+     BlockInfo storedBlock = bm0.getStoredBlock(blk.getLocalBlock());
+     assertTrue("Block " + blk + " should be under construction, " +
+         "got: " + storedBlock,
+-        storedBlock instanceof BlockInfoContiguousUnderConstruction);
+-    BlockInfoContiguousUnderConstruction ucBlock =
+-      (BlockInfoContiguousUnderConstruction)storedBlock;
++        storedBlock instanceof BlockInfoUnderConstruction);
++    BlockInfoUnderConstruction ucBlock =
++      (BlockInfoUnderConstruction)storedBlock;
+     // We expect that the replica with the most recent heart beat will be
+     // the one to be in charge of the synchronization / recovery protocol.
+     final DatanodeStorageInfo[] storages = ucBlock.getExpectedStorageLocations();
+diff --git a/hadoop-hdfs-project/hadoop-hdfs/src/test/java/org/apache/hadoop/hdfs/server/blockmanagement/TestBlockInfoUnderConstruction.java b/hadoop-hdfs-project/hadoop-hdfs/src/test/java/org/apache/hadoop/hdfs/server/blockmanagement/TestBlockInfoUnderConstruction.java
+index a7ba293..630cd1c 100644
+--- a/hadoop-hdfs-project/hadoop-hdfs/src/test/java/org/apache/hadoop/hdfs/server/blockmanagement/TestBlockInfoUnderConstruction.java
++++ b/hadoop-hdfs-project/hadoop-hdfs/src/test/java/org/apache/hadoop/hdfs/server/blockmanagement/TestBlockInfoUnderConstruction.java
+@@ -23,7 +23,6 @@
+ import org.apache.hadoop.hdfs.protocol.Block;
+ import org.apache.hadoop.hdfs.server.common.GenerationStamp;
+ import org.apache.hadoop.hdfs.server.common.HdfsServerConstants.BlockUCState;
+-import org.apache.hadoop.util.Time;
+ import org.junit.Test;
+ 
+ /**
+@@ -40,7 +39,8 @@ public void testInitializeBlockRecovery() throws Exception {
+     DatanodeDescriptor dd3 = s3.getDatanodeDescriptor();
+ 
+     dd1.isAlive = dd2.isAlive = dd3.isAlive = true;
+-    BlockInfoContiguousUnderConstruction blockInfo = new BlockInfoContiguousUnderConstruction(
++    BlockInfoUnderConstruction blockInfo =
++        new BlockInfoUnderConstructionContiguous(
+         new Block(0, 0, GenerationStamp.LAST_RESERVED_STAMP),
+         (short) 3,
+         BlockUCState.UNDER_CONSTRUCTION,
+@@ -51,7 +51,7 @@ public void testInitializeBlockRecovery() throws Exception {
+     DFSTestUtil.resetLastUpdatesWithOffset(dd2, -1 * 1000);
+     DFSTestUtil.resetLastUpdatesWithOffset(dd3, -2 * 1000);
+     blockInfo.initializeBlockRecovery(1);
+-    BlockInfoContiguousUnderConstruction[] blockInfoRecovery = dd2.getLeaseRecoveryCommand(1);
++    BlockInfoUnderConstruction[] blockInfoRecovery = dd2.getLeaseRecoveryCommand(1);
+     assertEquals(blockInfoRecovery[0], blockInfo);
+ 
+     // Recovery attempt #2.
+diff --git a/hadoop-hdfs-project/hadoop-hdfs/src/test/java/org/apache/hadoop/hdfs/server/blockmanagement/TestBlockManager.java b/hadoop-hdfs-project/hadoop-hdfs/src/test/java/org/apache/hadoop/hdfs/server/blockmanagement/TestBlockManager.java
+index fd03745..5a82b15 100644
+--- a/hadoop-hdfs-project/hadoop-hdfs/src/test/java/org/apache/hadoop/hdfs/server/blockmanagement/TestBlockManager.java
++++ b/hadoop-hdfs-project/hadoop-hdfs/src/test/java/org/apache/hadoop/hdfs/server/blockmanagement/TestBlockManager.java
+@@ -726,7 +726,7 @@ public void testSafeModeIBRBeforeFirstFullBR() throws Exception {
+     // verify the storage info is correct
+     assertTrue(bm.getStoredBlock(new Block(receivedBlockId)).findStorageInfo
+         (ds) >= 0);
+-    assertTrue(((BlockInfoContiguousUnderConstruction) bm.
++    assertTrue(((BlockInfoUnderConstruction) bm.
+         getStoredBlock(new Block(receivingBlockId))).getNumExpectedLocations() > 0);
+     assertTrue(bm.getStoredBlock(new Block(receivingReceivedBlockId))
+         .findStorageInfo(ds) >= 0);
+@@ -747,8 +747,8 @@ private BlockInfo addBlockToBM(long blkId) {
+ 
+   private BlockInfo addUcBlockToBM(long blkId) {
+     Block block = new Block(blkId);
+-    BlockInfoContiguousUnderConstruction blockInfo =
+-        new BlockInfoContiguousUnderConstruction(block, (short) 3);
++    BlockInfoUnderConstruction blockInfo =
++        new BlockInfoUnderConstructionContiguous(block, (short) 3);
+     BlockCollection bc = Mockito.mock(BlockCollection.class);
+     Mockito.doReturn((short) 3).when(bc).getPreferredBlockReplication();
+     bm.blocksMap.addBlockCollection(blockInfo, bc);
+diff --git a/hadoop-hdfs-project/hadoop-hdfs/src/test/java/org/apache/hadoop/hdfs/server/blockmanagement/TestHeartbeatHandling.java b/hadoop-hdfs-project/hadoop-hdfs/src/test/java/org/apache/hadoop/hdfs/server/blockmanagement/TestHeartbeatHandling.java
+index 6fc30ba..e48e9e8 100644
+--- a/hadoop-hdfs-project/hadoop-hdfs/src/test/java/org/apache/hadoop/hdfs/server/blockmanagement/TestHeartbeatHandling.java
++++ b/hadoop-hdfs-project/hadoop-hdfs/src/test/java/org/apache/hadoop/hdfs/server/blockmanagement/TestHeartbeatHandling.java
+@@ -39,7 +39,6 @@
+ import org.apache.hadoop.hdfs.server.protocol.DatanodeProtocol;
+ import org.apache.hadoop.hdfs.server.protocol.DatanodeRegistration;
+ import org.apache.hadoop.hdfs.server.protocol.DatanodeStorage;
+-import org.apache.hadoop.util.Time;
+ import org.junit.Test;
+ 
+ /**
+@@ -173,7 +172,8 @@ public void testHeartbeatBlockRecovery() throws Exception {
+               dd1.getStorageInfos()[0],
+               dd2.getStorageInfos()[0],
+               dd3.getStorageInfos()[0]};
+-          BlockInfoContiguousUnderConstruction blockInfo = new BlockInfoContiguousUnderConstruction(
++          BlockInfoUnderConstruction blockInfo =
++              new BlockInfoUnderConstructionContiguous(
+               new Block(0, 0, GenerationStamp.LAST_RESERVED_STAMP), (short) 3,
+               BlockUCState.UNDER_RECOVERY, storages);
+           dd1.addBlockToBeRecovered(blockInfo);
+@@ -195,7 +195,7 @@ public void testHeartbeatBlockRecovery() throws Exception {
+           // More than the default stale interval of 30 seconds.
+           DFSTestUtil.resetLastUpdatesWithOffset(dd2, -40 * 1000);
+           DFSTestUtil.resetLastUpdatesWithOffset(dd3, 0);
+-          blockInfo = new BlockInfoContiguousUnderConstruction(
++          blockInfo = new BlockInfoUnderConstructionContiguous(
+               new Block(0, 0, GenerationStamp.LAST_RESERVED_STAMP), (short) 3,
+               BlockUCState.UNDER_RECOVERY, storages);
+           dd1.addBlockToBeRecovered(blockInfo);
+@@ -216,7 +216,7 @@ public void testHeartbeatBlockRecovery() throws Exception {
+           // More than the default stale interval of 30 seconds.
+           DFSTestUtil.resetLastUpdatesWithOffset(dd2, - 40 * 1000);
+           DFSTestUtil.resetLastUpdatesWithOffset(dd3, - 80 * 1000);
+-          blockInfo = new BlockInfoContiguousUnderConstruction(
++          blockInfo = new BlockInfoUnderConstructionContiguous(
+               new Block(0, 0, GenerationStamp.LAST_RESERVED_STAMP), (short) 3,
+               BlockUCState.UNDER_RECOVERY, storages);
+           dd1.addBlockToBeRecovered(blockInfo);
+diff --git a/hadoop-hdfs-project/hadoop-hdfs/src/test/java/org/apache/hadoop/hdfs/server/blockmanagement/TestReplicationPolicy.java b/hadoop-hdfs-project/hadoop-hdfs/src/test/java/org/apache/hadoop/hdfs/server/blockmanagement/TestReplicationPolicy.java
+index fccaf3c..6e98538 100644
+--- a/hadoop-hdfs-project/hadoop-hdfs/src/test/java/org/apache/hadoop/hdfs/server/blockmanagement/TestReplicationPolicy.java
++++ b/hadoop-hdfs-project/hadoop-hdfs/src/test/java/org/apache/hadoop/hdfs/server/blockmanagement/TestReplicationPolicy.java
+@@ -1176,7 +1176,8 @@ public void testAddStoredBlockDoesNotCauseSkippedReplication()
+     // block under construction, the BlockManager will realize the expected
+     // replication has been achieved and remove it from the under-replicated
+     // queue.
+-    BlockInfoContiguousUnderConstruction info = new BlockInfoContiguousUnderConstruction(block1, (short) 1);
++    BlockInfoUnderConstruction info =
++        new BlockInfoUnderConstructionContiguous(block1, (short) 1);
+     BlockCollection bc = mock(BlockCollection.class);
+     when(bc.getPreferredBlockReplication()).thenReturn((short)1);
+     bm.addBlockCollection(info, bc);
+@@ -1232,7 +1233,7 @@ public void testAddStoredBlockDoesNotCauseSkippedReplication()
+ 
+     DatanodeStorageInfo[] storageAry = {new DatanodeStorageInfo(
+         dataNodes[0], new DatanodeStorage("s1"))};
+-    final BlockInfoContiguousUnderConstruction ucBlock =
++    final BlockInfoUnderConstruction ucBlock =
+         info.convertToBlockUnderConstruction(BlockUCState.UNDER_CONSTRUCTION,
+             storageAry);
+     DatanodeStorageInfo storage = mock(DatanodeStorageInfo.class);
+diff --git a/hadoop-hdfs-project/hadoop-hdfs/src/test/java/org/apache/hadoop/hdfs/server/namenode/TestBlockUnderConstruction.java b/hadoop-hdfs-project/hadoop-hdfs/src/test/java/org/apache/hadoop/hdfs/server/namenode/TestBlockUnderConstruction.java
+index f372bec..872ff9c 100644
+--- a/hadoop-hdfs-project/hadoop-hdfs/src/test/java/org/apache/hadoop/hdfs/server/namenode/TestBlockUnderConstruction.java
++++ b/hadoop-hdfs-project/hadoop-hdfs/src/test/java/org/apache/hadoop/hdfs/server/namenode/TestBlockUnderConstruction.java
+@@ -36,7 +36,7 @@
+ import org.apache.hadoop.hdfs.protocol.LocatedBlock;
+ import org.apache.hadoop.hdfs.protocol.LocatedBlocks;
+ import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfo;
+-import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfoContiguousUnderConstruction;
++import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfoUnderConstruction;
+ import org.apache.hadoop.hdfs.server.common.HdfsServerConstants.BlockUCState;
+ import org.apache.hadoop.hdfs.server.protocol.NamenodeProtocols;
+ import org.junit.AfterClass;
+@@ -170,7 +170,7 @@ public void testGetBlockLocations() throws IOException {
+       final List<LocatedBlock> blocks = lb.getLocatedBlocks();
+       assertEquals(i, blocks.size());
+       final Block b = blocks.get(blocks.size() - 1).getBlock().getLocalBlock();
+-      assertTrue(b instanceof BlockInfoContiguousUnderConstruction);
++      assertTrue(b instanceof BlockInfoUnderConstruction);
+ 
+       if (++i < NUM_BLOCKS) {
+         // write one more block
+diff --git a/hadoop-hdfs-project/hadoop-hdfs/src/test/java/org/apache/hadoop/hdfs/server/namenode/TestCommitBlockSynchronization.java b/hadoop-hdfs-project/hadoop-hdfs/src/test/java/org/apache/hadoop/hdfs/server/namenode/TestCommitBlockSynchronization.java
+index bea7241..b6cb522 100644
+--- a/hadoop-hdfs-project/hadoop-hdfs/src/test/java/org/apache/hadoop/hdfs/server/namenode/TestCommitBlockSynchronization.java
++++ b/hadoop-hdfs-project/hadoop-hdfs/src/test/java/org/apache/hadoop/hdfs/server/namenode/TestCommitBlockSynchronization.java
+@@ -24,7 +24,8 @@
+ import org.apache.hadoop.hdfs.protocol.ExtendedBlock;
+ import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfo;
+ import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfoContiguous;
+-import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfoContiguousUnderConstruction;
++import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfoUnderConstruction;
++import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfoUnderConstructionContiguous;
+ import org.apache.hadoop.hdfs.server.blockmanagement.DatanodeStorageInfo;
+ import org.apache.hadoop.hdfs.server.common.HdfsServerConstants;
+ import org.junit.Test;
+@@ -68,8 +69,10 @@ private FSNamesystem makeNameSystemSpy(Block block, INodeFile file)
+     namesystem.dir.getINodeMap().put(file);
+ 
+     FSNamesystem namesystemSpy = spy(namesystem);
+-    BlockInfoContiguousUnderConstruction blockInfo = new BlockInfoContiguousUnderConstruction(
+-        block, (short) 1, HdfsServerConstants.BlockUCState.UNDER_CONSTRUCTION, targets);
++    BlockInfoUnderConstruction blockInfo =
++        new BlockInfoUnderConstructionContiguous(
++        block, (short) 1, HdfsServerConstants.BlockUCState.UNDER_CONSTRUCTION,
++            targets);
+     blockInfo.setBlockCollection(file);
+     blockInfo.setGenerationStamp(genStamp);
+     blockInfo.initializeBlockRecovery(genStamp);
+diff --git a/hadoop-hdfs-project/hadoop-hdfs/src/test/java/org/apache/hadoop/hdfs/server/namenode/TestFileTruncate.java b/hadoop-hdfs-project/hadoop-hdfs/src/test/java/org/apache/hadoop/hdfs/server/namenode/TestFileTruncate.java
+index 222f22b..df920e0 100644
+--- a/hadoop-hdfs-project/hadoop-hdfs/src/test/java/org/apache/hadoop/hdfs/server/namenode/TestFileTruncate.java
++++ b/hadoop-hdfs-project/hadoop-hdfs/src/test/java/org/apache/hadoop/hdfs/server/namenode/TestFileTruncate.java
+@@ -54,7 +54,7 @@
+ import org.apache.hadoop.hdfs.protocol.HdfsConstants.SafeModeAction;
+ import org.apache.hadoop.hdfs.protocol.LocatedBlock;
+ import org.apache.hadoop.hdfs.protocol.LocatedBlocks;
+-import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfoContiguousUnderConstruction;
++import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfoUnderConstruction;
+ import org.apache.hadoop.hdfs.server.common.HdfsServerConstants;
+ import org.apache.hadoop.hdfs.server.common.HdfsServerConstants.StartupOption;
+ import org.apache.hadoop.security.UserGroupInformation;
+@@ -1019,7 +1019,7 @@ public void testTruncateRecovery() throws IOException {
+           is(fsn.getBlockIdManager().getGenerationStampV2()));
+       assertThat(file.getLastBlock().getBlockUCState(),
+           is(HdfsServerConstants.BlockUCState.UNDER_RECOVERY));
+-      long blockRecoveryId = ((BlockInfoContiguousUnderConstruction) file.getLastBlock())
++      long blockRecoveryId = ((BlockInfoUnderConstruction) file.getLastBlock())
+           .getBlockRecoveryId();
+       assertThat(blockRecoveryId, is(initialGenStamp + 1));
+       fsn.getEditLog().logTruncate(
+@@ -1052,7 +1052,7 @@ public void testTruncateRecovery() throws IOException {
+           is(fsn.getBlockIdManager().getGenerationStampV2()));
+       assertThat(file.getLastBlock().getBlockUCState(),
+           is(HdfsServerConstants.BlockUCState.UNDER_RECOVERY));
+-      long blockRecoveryId = ((BlockInfoContiguousUnderConstruction) file.getLastBlock())
++      long blockRecoveryId = ((BlockInfoUnderConstruction) file.getLastBlock())
+           .getBlockRecoveryId();
+       assertThat(blockRecoveryId, is(initialGenStamp + 1));
+       fsn.getEditLog().logTruncate(
+diff --git a/hadoop-hdfs-project/hadoop-hdfs/src/test/java/org/apache/hadoop/hdfs/server/namenode/ha/TestRetryCacheWithHA.java b/hadoop-hdfs-project/hadoop-hdfs/src/test/java/org/apache/hadoop/hdfs/server/namenode/ha/TestRetryCacheWithHA.java
+index d202fb7..14d9a1e 100644
+--- a/hadoop-hdfs-project/hadoop-hdfs/src/test/java/org/apache/hadoop/hdfs/server/namenode/ha/TestRetryCacheWithHA.java
++++ b/hadoop-hdfs-project/hadoop-hdfs/src/test/java/org/apache/hadoop/hdfs/server/namenode/ha/TestRetryCacheWithHA.java
+@@ -72,7 +72,7 @@
+ import org.apache.hadoop.hdfs.protocol.LastBlockWithStatus;
+ import org.apache.hadoop.hdfs.protocol.LocatedBlock;
+ import org.apache.hadoop.hdfs.protocol.LocatedBlocks;
+-import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfoContiguousUnderConstruction;
++import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfoUnderConstruction;
+ import org.apache.hadoop.hdfs.server.namenode.FSNamesystem;
+ import org.apache.hadoop.hdfs.server.namenode.INodeFile;
+ import org.apache.hadoop.hdfs.server.namenode.snapshot.SnapshotTestHelper;
+@@ -752,8 +752,8 @@ void invoke() throws Exception {
+     boolean checkNamenodeBeforeReturn() throws Exception {
+       INodeFile fileNode = cluster.getNamesystem(0).getFSDirectory()
+           .getINode4Write(file).asFile();
+-      BlockInfoContiguousUnderConstruction blkUC =
+-          (BlockInfoContiguousUnderConstruction) (fileNode.getBlocks())[1];
++      BlockInfoUnderConstruction blkUC =
++          (BlockInfoUnderConstruction) (fileNode.getBlocks())[1];
+       int datanodeNum = blkUC.getExpectedStorageLocations().length;
+       for (int i = 0; i < CHECKTIMES && datanodeNum != 2; i++) {
+         Thread.sleep(1000);
+diff --git a/hadoop-hdfs-project/hadoop-hdfs/src/test/java/org/apache/hadoop/hdfs/server/namenode/snapshot/SnapshotTestHelper.java b/hadoop-hdfs-project/hadoop-hdfs/src/test/java/org/apache/hadoop/hdfs/server/namenode/snapshot/SnapshotTestHelper.java
+index a1abd08..824f45b 100644
+--- a/hadoop-hdfs-project/hadoop-hdfs/src/test/java/org/apache/hadoop/hdfs/server/namenode/snapshot/SnapshotTestHelper.java
++++ b/hadoop-hdfs-project/hadoop-hdfs/src/test/java/org/apache/hadoop/hdfs/server/namenode/snapshot/SnapshotTestHelper.java
+@@ -44,7 +44,7 @@
+ import org.apache.hadoop.hdfs.MiniDFSCluster;
+ import org.apache.hadoop.hdfs.protocol.HdfsConstants;
+ import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfo;
+-import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfoContiguousUnderConstruction;
++import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfoUnderConstruction;
+ import org.apache.hadoop.hdfs.server.blockmanagement.BlockManager;
+ import org.apache.hadoop.hdfs.server.datanode.BlockPoolSliceStorage;
+ import org.apache.hadoop.hdfs.server.datanode.BlockScanner;
+@@ -177,7 +177,7 @@ public static void checkSnapshotCreation(DistributedFileSystem hdfs,
+    * Specific information for different types of INode: 
+    * {@link INodeDirectory}:childrenSize 
+    * {@link INodeFile}: fileSize, block list. Check {@link BlockInfo#toString()}
+-   * and {@link BlockInfoContiguousUnderConstruction#toString()} for detailed information.
++   * and {@link BlockInfoUnderConstruction#toString()} for detailed information.
+    * {@link FileWithSnapshot}: next link
+    * </pre>
+    * @see INode#dumpTreeRecursively()

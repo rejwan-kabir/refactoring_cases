@@ -1,0 +1,532 @@
+commit d42d0860cb670c8284bb298029cd6f8f59db9510
+Author: Tsz-wo Sze <szetszwo@apache.org>
+Date:   Thu Feb 14 22:00:36 2013 +0000
+
+    HDFS-4500. Refactor snapshot INode methods.
+    
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/branches/HDFS-2802@1446355 13f79535-47bb-0310-9956-ffa450edef68
+
+diff --git a/hadoop-hdfs-project/hadoop-hdfs/CHANGES.HDFS-2802.txt b/hadoop-hdfs-project/hadoop-hdfs/CHANGES.HDFS-2802.txt
+index 1921225..2d80070 100644
+--- a/hadoop-hdfs-project/hadoop-hdfs/CHANGES.HDFS-2802.txt
++++ b/hadoop-hdfs-project/hadoop-hdfs/CHANGES.HDFS-2802.txt
+@@ -155,3 +155,5 @@ Branch-2802 Snapshot (Unreleased)
+   HDFS-4480. Eliminate the file snapshot circular linked list.  (szetszwo)
+ 
+   HDFS-4481. Change fsimage to support snapshot file diffs.  (szetszwo)
++
++  HDFS-4500. Refactor snapshot INode methods.  (szetszwo)
+diff --git a/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/INode.java b/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/INode.java
+index 373dac9..fe7e361 100644
+--- a/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/INode.java
++++ b/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/INode.java
+@@ -48,17 +48,6 @@
+ public abstract class INode implements Diff.Element<byte[]> {
+   public static final Log LOG = LogFactory.getLog(INode.class);
+ 
+-  /** A pair of objects. */
+-  public static class Pair<L, R> {
+-    public final L left;
+-    public final R right;
+-
+-    public Pair(L left, R right) {
+-      this.left = left;
+-      this.right = right;
+-    }
+-  }
+-
+   /** Wrapper of two counters for namespace consumed and diskspace consumed. */
+   static class DirCounts {
+     /** namespace count */
+@@ -177,12 +166,12 @@ void clonePermissionStatus(INode that) {
+     this.permission = that.permission;
+   }
+   /** Get the {@link PermissionStatus} */
+-  public PermissionStatus getPermissionStatus(Snapshot snapshot) {
++  public final PermissionStatus getPermissionStatus(Snapshot snapshot) {
+     return new PermissionStatus(getUserName(snapshot), getGroupName(snapshot),
+         getFsPermission(snapshot));
+   }
+   /** The same as getPermissionStatus(null). */
+-  public PermissionStatus getPermissionStatus() {
++  public final PermissionStatus getPermissionStatus() {
+     return getPermissionStatus(null);
+   }
+   private INode updatePermissionStatus(PermissionStatusFormat f, long n,
+@@ -197,12 +186,16 @@ private INode updatePermissionStatus(PermissionStatusFormat f, long n,
+    *          otherwise, get the result from the current inode.
+    * @return user name
+    */
+-  public String getUserName(Snapshot snapshot) {
++  public final String getUserName(Snapshot snapshot) {
++    if (snapshot != null) {
++      return getSnapshotINode(snapshot).getUserName();
++    }
++
+     int n = (int)PermissionStatusFormat.USER.retrieve(permission);
+     return SerialNumberManager.INSTANCE.getUser(n);
+   }
+   /** The same as getUserName(null). */
+-  public String getUserName() {
++  public final String getUserName() {
+     return getUserName(null);
+   }
+   /** Set user */
+@@ -216,12 +209,16 @@ protected INode setUser(String user, Snapshot latest) {
+    *          otherwise, get the result from the current inode.
+    * @return group name
+    */
+-  public String getGroupName(Snapshot snapshot) {
++  public final String getGroupName(Snapshot snapshot) {
++    if (snapshot != null) {
++      return getSnapshotINode(snapshot).getGroupName();
++    }
++
+     int n = (int)PermissionStatusFormat.GROUP.retrieve(permission);
+     return SerialNumberManager.INSTANCE.getGroup(n);
+   }
+   /** The same as getGroupName(null). */
+-  public String getGroupName() {
++  public final String getGroupName() {
+     return getGroupName(null);
+   }
+   /** Set group */
+@@ -235,12 +232,16 @@ protected INode setGroup(String group, Snapshot latest) {
+    *          otherwise, get the result from the current inode.
+    * @return permission.
+    */
+-  public FsPermission getFsPermission(Snapshot snapshot) {
++  public final FsPermission getFsPermission(Snapshot snapshot) {
++    if (snapshot != null) {
++      return getSnapshotINode(snapshot).getFsPermission();
++    }
++
+     return new FsPermission(
+         (short)PermissionStatusFormat.MODE.retrieve(permission));
+   }
+   /** The same as getFsPermission(null). */
+-  public FsPermission getFsPermission() {
++  public final FsPermission getFsPermission() {
+     return getFsPermission(null);
+   }
+   protected short getFsPermissionShort() {
+@@ -252,6 +253,14 @@ INode setPermission(FsPermission permission, Snapshot latest) {
+     return updatePermissionStatus(PermissionStatusFormat.MODE, mode, latest);
+   }
+ 
++  /**
++   * @return if the given snapshot is null, return this;
++   *     otherwise return the corresponding snapshot inode.
++   */
++  public INode getSnapshotINode(final Snapshot snapshot) {
++    return this;
++  }
++
+   /** Is this inode in the latest snapshot? */
+   public final boolean isInLatestSnapshot(final Snapshot latest) {
+     return latest != null
+@@ -427,7 +436,11 @@ public void clearReferences() {
+    *          otherwise, get the result from the current inode.
+    * @return modification time.
+    */
+-  public long getModificationTime(Snapshot snapshot) {
++  public final long getModificationTime(Snapshot snapshot) {
++    if (snapshot != null) {
++      return getSnapshotINode(snapshot).modificationTime;
++    }
++
+     return this.modificationTime;
+   }
+ 
+@@ -464,12 +477,16 @@ public final INode setModificationTime(long modtime, Snapshot latest) {
+    *          otherwise, get the result from the current inode.
+    * @return access time
+    */
+-  public long getAccessTime(Snapshot snapshot) {
++  public final long getAccessTime(Snapshot snapshot) {
++    if (snapshot != null) {
++      return getSnapshotINode(snapshot).accessTime;
++    }
++
+     return accessTime;
+   }
+ 
+   /** The same as getAccessTime(null). */
+-  public long getAccessTime() {
++  public final long getAccessTime() {
+     return getAccessTime(null);
+   }
+ 
+@@ -598,9 +615,7 @@ public void dumpTreeRecursively(PrintWriter out, StringBuilder prefix,
+     out.print(getObjectString());
+     out.print("), parent=");
+     out.print(parent == null? null: parent.getLocalName() + "/");
+-    out.print(", permission=" + getFsPermission(snapshot));
+-    out.print(", group=" + getGroupName(snapshot));
+-    out.print(", user=" + getUserName(snapshot));
++    out.print(", " + getPermissionStatus(snapshot));
+   }
+   
+   /**
+diff --git a/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/INodeDirectory.java b/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/INodeDirectory.java
+index b1b9e6a..8185229 100644
+--- a/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/INodeDirectory.java
++++ b/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/INodeDirectory.java
+@@ -834,21 +834,20 @@ public void dumpTreeRecursively(PrintWriter out, StringBuilder prefix,
+       prefix.setLength(prefix.length() - 2);
+       prefix.append("  ");
+     }
+-    dumpTreeRecursively(out, prefix,
+-        new Iterable<Pair<? extends INode, Snapshot>>() {
++    dumpTreeRecursively(out, prefix, new Iterable<SnapshotAndINode>() {
+       final Iterator<INode> i = getChildrenList(snapshot).iterator();
+       
+       @Override
+-      public Iterator<Pair<? extends INode, Snapshot>> iterator() {
+-        return new Iterator<Pair<? extends INode, Snapshot>>() {
++      public Iterator<SnapshotAndINode> iterator() {
++        return new Iterator<SnapshotAndINode>() {
+           @Override
+           public boolean hasNext() {
+             return i.hasNext();
+           }
+ 
+           @Override
+-          public Pair<INode, Snapshot> next() {
+-            return new Pair<INode, Snapshot>(i.next(), snapshot);
++          public SnapshotAndINode next() {
++            return new SnapshotAndINode(snapshot, i.next());
+           }
+ 
+           @Override
+@@ -867,14 +866,29 @@ public void remove() {
+    */
+   @VisibleForTesting
+   protected static void dumpTreeRecursively(PrintWriter out,
+-      StringBuilder prefix, Iterable<Pair<? extends INode, Snapshot>> subs) {
++      StringBuilder prefix, Iterable<SnapshotAndINode> subs) {
+     if (subs != null) {
+-      for(final Iterator<Pair<? extends INode, Snapshot>> i = subs.iterator(); i.hasNext();) {
+-        final Pair<? extends INode, Snapshot> pair = i.next();
++      for(final Iterator<SnapshotAndINode> i = subs.iterator(); i.hasNext();) {
++        final SnapshotAndINode pair = i.next();
+         prefix.append(i.hasNext()? DUMPTREE_EXCEPT_LAST_ITEM: DUMPTREE_LAST_ITEM);
+-        pair.left.dumpTreeRecursively(out, prefix, pair.right);
++        pair.inode.dumpTreeRecursively(out, prefix, pair.snapshot);
+         prefix.setLength(prefix.length() - 2);
+       }
+     }
+   }
++
++  /** A pair of Snapshot and INode objects. */
++  protected static class SnapshotAndINode {
++    public final Snapshot snapshot;
++    public final INode inode;
++
++    public SnapshotAndINode(Snapshot snapshot, INode inode) {
++      this.snapshot = snapshot;
++      this.inode = inode;
++    }
++
++    public SnapshotAndINode(Snapshot snapshot) {
++      this(snapshot, snapshot.getRoot());
++    }
++  }
+ }
+diff --git a/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/INodeFile.java b/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/INodeFile.java
+index 9e7e877..b5b970c 100644
+--- a/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/INodeFile.java
++++ b/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/INodeFile.java
+@@ -123,6 +123,11 @@ public INodeFileUnderConstruction toUnderConstruction(
+   }
+ 
+   @Override
++  public INodeFile getSnapshotINode(final Snapshot snapshot) {
++    return this;
++  }
++
++  @Override
+   public INodeFile recordModification(final Snapshot latest) {
+     return isInLatestSnapshot(latest)?
+         parent.replaceChild4INodeFileWithSnapshot(this)
+@@ -141,7 +146,11 @@ final INode setPermission(FsPermission permission, Snapshot latest) {
+   }
+ 
+   /** @return the replication factor of the file. */
+-  public short getFileReplication(Snapshot snapshot) {
++  public final short getFileReplication(Snapshot snapshot) {
++    if (snapshot != null) {
++      return getSnapshotINode(snapshot).getFileReplication();
++    }
++
+     return HeaderFormat.getReplication(header);
+   }
+ 
+diff --git a/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/snapshot/AbstractINodeDiffList.java b/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/snapshot/AbstractINodeDiffList.java
+index 16590af..a476071 100644
+--- a/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/snapshot/AbstractINodeDiffList.java
++++ b/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/snapshot/AbstractINodeDiffList.java
+@@ -145,9 +145,15 @@ final D getDiff(Snapshot snapshot) {
+     }
+   }
+ 
+-  N getSnapshotINode(Snapshot snapshot) {
++  /**
++   * @return the inode corresponding to the given snapshot.
++   *         Note that the current inode is returned if there is no change
++   *         between the given snapshot and the current state. 
++   */
++  N getSnapshotINode(final Snapshot snapshot, final N currentINode) {
+     final D diff = getDiff(snapshot);
+-    return diff == null? null: diff.getSnapshotINode();
++    final N inode = diff == null? null: diff.getSnapshotINode();
++    return inode == null? currentINode: inode;
+   }
+ 
+   /**
+diff --git a/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/snapshot/INodeDirectorySnapshottable.java b/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/snapshot/INodeDirectorySnapshottable.java
+index db2b559..112ecab 100644
+--- a/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/snapshot/INodeDirectorySnapshottable.java
++++ b/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/snapshot/INodeDirectorySnapshottable.java
+@@ -404,10 +404,10 @@ public void dumpTreeRecursively(PrintWriter out, StringBuilder prefix,
+       final String name = getLocalName();
+       out.println(name.isEmpty()? "/": name);
+ 
+-      dumpTreeRecursively(out, prefix, new Iterable<Pair<? extends INode, Snapshot>>() {
++      dumpTreeRecursively(out, prefix, new Iterable<SnapshotAndINode>() {
+         @Override
+-        public Iterator<Pair<? extends INode, Snapshot>> iterator() {
+-          return new Iterator<Pair<? extends INode, Snapshot>>() {
++        public Iterator<SnapshotAndINode> iterator() {
++          return new Iterator<SnapshotAndINode>() {
+             final Iterator<DirectoryDiff> i = getDiffs().iterator();
+             private DirectoryDiff next = findNext();
+   
+@@ -427,10 +427,9 @@ public boolean hasNext() {
+             }
+   
+             @Override
+-            public Pair<INodeDirectory, Snapshot> next() {
++            public SnapshotAndINode next() {
+               final Snapshot s = next.snapshot;
+-              final Pair<INodeDirectory, Snapshot> pair =
+-                  new Pair<INodeDirectory, Snapshot>(s.getRoot(), s);
++              final SnapshotAndINode pair = new SnapshotAndINode(s);
+               next = findNext();
+               return pair;
+             }
+diff --git a/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/snapshot/INodeDirectoryWithSnapshot.java b/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/snapshot/INodeDirectoryWithSnapshot.java
+index 965d34b..81a5cf3 100644
+--- a/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/snapshot/INodeDirectoryWithSnapshot.java
++++ b/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/snapshot/INodeDirectoryWithSnapshot.java
+@@ -26,7 +26,6 @@
+ import java.util.Map;
+ 
+ import org.apache.hadoop.fs.Path;
+-import org.apache.hadoop.fs.permission.FsPermission;
+ import org.apache.hadoop.hdfs.protocol.SnapshotDiffReport.DiffReportEntry;
+ import org.apache.hadoop.hdfs.protocol.SnapshotDiffReport.DiffType;
+ import org.apache.hadoop.hdfs.server.namenode.FSImageSerialization;
+@@ -413,6 +412,11 @@ DirectoryDiffList getDiffs() {
+   }
+ 
+   @Override
++  public INodeDirectory getSnapshotINode(Snapshot snapshot) {
++    return diffs.getSnapshotINode(snapshot, this);
++  }
++
++  @Override
+   public INodeDirectoryWithSnapshot recordModification(final Snapshot latest) {
+     return isInLatestSnapshot(latest)?
+         saveSelf2Snapshot(latest, null): this;
+@@ -508,37 +512,6 @@ public INode getChild(byte[] name, Snapshot snapshot) {
+   }
+ 
+   @Override
+-  public String getUserName(Snapshot snapshot) {
+-    final INodeDirectory inode = diffs.getSnapshotINode(snapshot);
+-    return inode != null? inode.getUserName(): super.getUserName(null);
+-  }
+-
+-  @Override
+-  public String getGroupName(Snapshot snapshot) {
+-    final INodeDirectory inode = diffs.getSnapshotINode(snapshot);
+-    return inode != null? inode.getGroupName(): super.getGroupName(null);
+-  }
+-
+-  @Override
+-  public FsPermission getFsPermission(Snapshot snapshot) {
+-    final INodeDirectory inode = diffs.getSnapshotINode(snapshot);
+-    return inode != null? inode.getFsPermission(): super.getFsPermission(null);
+-  }
+-
+-  @Override
+-  public long getAccessTime(Snapshot snapshot) {
+-    final INodeDirectory inode = diffs.getSnapshotINode(snapshot);
+-    return inode != null? inode.getAccessTime(): super.getAccessTime(null);
+-  }
+-
+-  @Override
+-  public long getModificationTime(Snapshot snapshot) {
+-    final INodeDirectory inode = diffs.getSnapshotINode(snapshot);
+-    return inode != null? inode.getModificationTime()
+-        : super.getModificationTime(null);
+-  }
+-
+-  @Override
+   public String toDetailString() {
+     return super.toDetailString() + ", " + diffs;
+   }
+diff --git a/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/snapshot/INodeFileUnderConstructionWithSnapshot.java b/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/snapshot/INodeFileUnderConstructionWithSnapshot.java
+index 4abecb5..797916c 100644
+--- a/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/snapshot/INodeFileUnderConstructionWithSnapshot.java
++++ b/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/snapshot/INodeFileUnderConstructionWithSnapshot.java
+@@ -18,7 +18,6 @@
+ package org.apache.hadoop.hdfs.server.namenode.snapshot;
+ 
+ import org.apache.hadoop.classification.InterfaceAudience;
+-import org.apache.hadoop.fs.permission.FsPermission;
+ import org.apache.hadoop.hdfs.server.blockmanagement.DatanodeDescriptor;
+ import org.apache.hadoop.hdfs.server.namenode.INodeFile;
+ import org.apache.hadoop.hdfs.server.namenode.INodeFileUnderConstruction;
+@@ -87,6 +86,11 @@ public boolean isCurrentFileDeleted() {
+   }
+ 
+   @Override
++  public INodeFile getSnapshotINode(Snapshot snapshot) {
++    return diffs.getSnapshotINode(snapshot, this);
++  }
++
++  @Override
+   public INodeFileUnderConstructionWithSnapshot recordModification(
+       final Snapshot latest) {
+     if (isInLatestSnapshot(latest)) {
+@@ -106,13 +110,6 @@ public FileDiffList getDiffs() {
+   }
+ 
+   @Override
+-  public short getFileReplication(Snapshot snapshot) {
+-    final INodeFile inode = diffs.getSnapshotINode(snapshot);
+-    return inode != null? inode.getFileReplication()
+-        : super.getFileReplication(null);
+-  }
+-
+-  @Override
+   public short getBlockReplication() {
+     return Util.getBlockReplication(this);
+   }
+@@ -142,37 +139,6 @@ public int destroySubtreeAndCollectBlocks(final Snapshot snapshot,
+   }
+ 
+   @Override
+-  public String getUserName(Snapshot snapshot) {
+-    final INodeFile inode = diffs.getSnapshotINode(snapshot);
+-    return inode != null? inode.getUserName(): super.getUserName(null);
+-  }
+-
+-  @Override
+-  public String getGroupName(Snapshot snapshot) {
+-    final INodeFile inode = diffs.getSnapshotINode(snapshot);
+-    return inode != null? inode.getGroupName(): super.getGroupName(null);
+-  }
+-
+-  @Override
+-  public FsPermission getFsPermission(Snapshot snapshot) {
+-    final INodeFile inode = diffs.getSnapshotINode(snapshot);
+-    return inode != null? inode.getFsPermission(): super.getFsPermission(null);
+-  }
+-
+-  @Override
+-  public long getAccessTime(Snapshot snapshot) {
+-    final INodeFile inode = diffs.getSnapshotINode(snapshot);
+-    return inode != null? inode.getAccessTime(): super.getAccessTime(null);
+-  }
+-
+-  @Override
+-  public long getModificationTime(Snapshot snapshot) {
+-    final INodeFile inode = diffs.getSnapshotINode(snapshot);
+-    return inode != null? inode.getModificationTime()
+-        : super.getModificationTime(null);
+-  }
+-
+-  @Override
+   public String toDetailString() {
+     return super.toDetailString()
+         + (isCurrentFileDeleted()? " (DELETED), ": ", ") + diffs;
+diff --git a/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/snapshot/INodeFileWithSnapshot.java b/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/snapshot/INodeFileWithSnapshot.java
+index 8d20330..cae834e 100644
+--- a/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/snapshot/INodeFileWithSnapshot.java
++++ b/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/snapshot/INodeFileWithSnapshot.java
+@@ -18,7 +18,6 @@
+ package org.apache.hadoop.hdfs.server.namenode.snapshot;
+ 
+ import org.apache.hadoop.classification.InterfaceAudience;
+-import org.apache.hadoop.fs.permission.FsPermission;
+ import org.apache.hadoop.hdfs.server.blockmanagement.DatanodeDescriptor;
+ import org.apache.hadoop.hdfs.server.namenode.INodeFile;
+ 
+@@ -58,6 +57,11 @@ public boolean isCurrentFileDeleted() {
+   }
+ 
+   @Override
++  public INodeFile getSnapshotINode(Snapshot snapshot) {
++    return diffs.getSnapshotINode(snapshot, this);
++  }
++
++  @Override
+   public INodeFileWithSnapshot recordModification(final Snapshot latest) {
+     if (isInLatestSnapshot(latest)) {
+       diffs.saveSelf2Snapshot(latest, this, null);
+@@ -76,13 +80,6 @@ public FileDiffList getDiffs() {
+   }
+ 
+   @Override
+-  public short getFileReplication(Snapshot snapshot) {
+-    final INodeFile inode = diffs.getSnapshotINode(snapshot);
+-    return inode != null? inode.getFileReplication()
+-        : super.getFileReplication(null);
+-  }
+-
+-  @Override
+   public short getBlockReplication() {
+     return Util.getBlockReplication(this);
+   }
+@@ -112,37 +109,6 @@ public int destroySubtreeAndCollectBlocks(final Snapshot snapshot,
+   }
+ 
+   @Override
+-  public String getUserName(Snapshot snapshot) {
+-    final INodeFile inode = diffs.getSnapshotINode(snapshot);
+-    return inode != null? inode.getUserName(): super.getUserName(null);
+-  }
+-
+-  @Override
+-  public String getGroupName(Snapshot snapshot) {
+-    final INodeFile inode = diffs.getSnapshotINode(snapshot);
+-    return inode != null? inode.getGroupName(): super.getGroupName(null);
+-  }
+-
+-  @Override
+-  public FsPermission getFsPermission(Snapshot snapshot) {
+-    final INodeFile inode = diffs.getSnapshotINode(snapshot);
+-    return inode != null? inode.getFsPermission(): super.getFsPermission(null);
+-  }
+-
+-  @Override
+-  public long getAccessTime(Snapshot snapshot) {
+-    final INodeFile inode = diffs.getSnapshotINode(snapshot);
+-    return inode != null? inode.getAccessTime(): super.getAccessTime(null);
+-  }
+-
+-  @Override
+-  public long getModificationTime(Snapshot snapshot) {
+-    final INodeFile inode = diffs.getSnapshotINode(snapshot);
+-    return inode != null? inode.getModificationTime()
+-        : super.getModificationTime(null);
+-  }
+-
+-  @Override
+   public String toDetailString() {
+     return super.toDetailString()
+         + (isCurrentFileDeleted()? "(DELETED), ": ", ") + diffs;

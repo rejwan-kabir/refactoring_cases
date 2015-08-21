@@ -1,0 +1,12 @@
+1: small change to make code more readable
+2: Refactor Proxyusers to use AccessControlList
+3: change method signature
+4: Refactor refresh*Protocols into a single generic refreshConfigProtocol 
+5: Refactor out helper functions from FileContext
+6: Refactor to use apache curator framework
+7: change of method signature
+8: A refactoring to avoid using lock
+9: Refactor to use utitlity functions
+10: Refactor to use helper method
+11: replace the Pair < ? extends INode, Snapshot > with class SnapshotAndINode
+12: Replace Data Value with Object

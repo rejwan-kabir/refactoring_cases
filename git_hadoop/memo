@@ -1,0 +1,15 @@
+1: extract method
+2: ExtractMethod and SelfEncapsulate Field
+3: extract method (reuse method)
+4: Refactor class: Exctract method into static helper class
+5: ExtractMethod (for conditional) and Replace Data Value With Object
+6: extract method (a very big method into 4 smaller methods)
+7: extract class
+8: extract method
+9: Extract Class
+10: Collapse Hierarchy
+11: extract class
+12: Extract method
+13: Extract and Move Method
+14: Extract Method
+

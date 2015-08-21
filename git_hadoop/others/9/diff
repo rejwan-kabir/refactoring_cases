@@ -1,0 +1,229 @@
+commit 214aceb9f707b117b8dacdc4d53224d4445fd78d
+Author: Arpit Agarwal <arp@apache.org>
+Date:   Mon Jun 23 23:15:02 2014 +0000
+
+    HADOOP-10659. Refactor AccessControlList to reuse utility functions and to improve performance. (Contributed by Benoy Antony)
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/trunk@1604955 13f79535-47bb-0310-9956-ffa450edef68
+
+diff --git a/hadoop-common-project/hadoop-common/CHANGES.txt b/hadoop-common-project/hadoop-common/CHANGES.txt
+index cb49bc5..d7d0f56 100644
+--- a/hadoop-common-project/hadoop-common/CHANGES.txt
++++ b/hadoop-common-project/hadoop-common/CHANGES.txt
+@@ -445,6 +445,9 @@ Release 2.5.0 - UNRELEASED
+     HADOOP-10279. Create multiplexer, a requirement for the fair queue.
+     (Chris Li via Arpit Agarwal)
+ 
++    HADOOP-10659. Refactor AccessControlList to reuse utility functions
++    and to improve performance. (Benoy Antony via Arpit Agarwal)
++
+   OPTIMIZATIONS
+ 
+   BUG FIXES 
+diff --git a/hadoop-common-project/hadoop-common/src/main/java/org/apache/hadoop/security/authorize/AccessControlList.java b/hadoop-common-project/hadoop-common/src/main/java/org/apache/hadoop/security/authorize/AccessControlList.java
+index e23612e..9d328c0 100644
+--- a/hadoop-common-project/hadoop-common/src/main/java/org/apache/hadoop/security/authorize/AccessControlList.java
++++ b/hadoop-common-project/hadoop-common/src/main/java/org/apache/hadoop/security/authorize/AccessControlList.java
+@@ -20,22 +20,21 @@
+ import java.io.DataInput;
+ import java.io.DataOutput;
+ import java.io.IOException;
+-import java.util.Set;
+-import java.util.TreeSet;
+-import java.util.Arrays;
+-import java.util.List;
++import java.util.Collection;
++import java.util.HashSet;
+ import java.util.LinkedList;
+-import java.util.ListIterator;
++import java.util.List;
+ 
+ import org.apache.hadoop.classification.InterfaceAudience;
+ import org.apache.hadoop.classification.InterfaceStability;
++import org.apache.hadoop.conf.Configuration;
+ import org.apache.hadoop.io.Text;
+ import org.apache.hadoop.io.Writable;
+ import org.apache.hadoop.io.WritableFactories;
+ import org.apache.hadoop.io.WritableFactory;
+-import org.apache.hadoop.security.UserGroupInformation;
+ import org.apache.hadoop.security.Groups;
+-import org.apache.hadoop.conf.Configuration;
++import org.apache.hadoop.security.UserGroupInformation;
++import org.apache.hadoop.util.StringUtils;
+ 
+ /**
+  * Class representing a configured access control list.
+@@ -58,9 +57,9 @@
+   private static final int INITIAL_CAPACITY = 256;
+ 
+   // Set of users who are granted access.
+-  private Set<String> users;
++  private Collection<String> users;
+   // Set of groups which are granted access
+-  private Set<String> groups;
++  private Collection<String> groups;
+   // Whether all users are granted access.
+   private boolean allAllowed;
+ 
+@@ -92,27 +91,21 @@ public AccessControlList(String aclString) {
+    * @param aclString build ACL from this string
+    */
+   private void buildACL(String aclString) {
+-    users = new TreeSet<String>();
+-    groups = new TreeSet<String>();
++    users = new HashSet<String>();
++    groups = new HashSet<String>();
+     if (isWildCardACLValue(aclString)) {
+       allAllowed = true;
+     } else {
+       allAllowed = false;
+       String[] userGroupStrings = aclString.split(" ", 2);
+-
++      
+       if (userGroupStrings.length >= 1) {
+-        List<String> usersList = new LinkedList<String>(
+-          Arrays.asList(userGroupStrings[0].split(",")));
+-        cleanupList(usersList);
+-        addToSet(users, usersList);
+-      }
++        users = StringUtils.getTrimmedStringCollection(userGroupStrings[0]);
++      } 
+       
+       if (userGroupStrings.length == 2) {
+-        List<String> groupsList = new LinkedList<String>(
+-          Arrays.asList(userGroupStrings[1].split(",")));
+-        cleanupList(groupsList);
+-        addToSet(groups, groupsList);
+-        groupsMapping.cacheGroupsAdd(groupsList);
++        groups = StringUtils.getTrimmedStringCollection(userGroupStrings[1]);
++        groupsMapping.cacheGroupsAdd(new LinkedList<String>(groups));
+       }
+     }
+   }
+@@ -203,7 +196,7 @@ public void removeGroup(String group) {
+    * Get the names of users allowed for this service.
+    * @return the set of user names. the set must not be modified.
+    */
+-  Set<String> getUsers() {
++  Collection<String> getUsers() {
+     return users;
+   }
+   
+@@ -211,7 +204,7 @@ public void removeGroup(String group) {
+    * Get the names of user groups allowed for this service.
+    * @return the set of group names. the set must not be modified.
+    */
+-  Set<String> getGroups() {
++  Collection<String> getGroups() {
+     return groups;
+   }
+ 
+@@ -229,36 +222,6 @@ public boolean isUserAllowed(UserGroupInformation ugi) {
+   }
+ 
+   /**
+-   * Cleanup list, remove empty strings, trim leading/trailing spaces
+-   *
+-   * @param list clean this list
+-   */
+-  private static final void cleanupList(List<String> list) {
+-    ListIterator<String> i = list.listIterator();
+-    while(i.hasNext()) {
+-      String s = i.next();
+-      if(s.length() == 0) {
+-        i.remove();
+-      } else {
+-        s = s.trim();
+-        i.set(s);
+-      }
+-    }
+-  }
+-
+-  /**
+-   * Add list to a set
+-   *
+-   * @param set add list to this set
+-   * @param list add items of this list to the set
+-   */
+-  private static final void addToSet(Set<String> set, List<String> list) {
+-    for(String s : list) {
+-      set.add(s);
+-    }
+-  }
+-
+-  /**
+    * Returns descriptive way of users and groups that are part of this ACL.
+    * Use {@link #getAclString()} to get the exact String that can be given to
+    * the constructor of AccessControlList to create a new instance.
+@@ -358,7 +321,7 @@ private String getGroupsString() {
+    *
+    * @param strings set of strings to concatenate
+    */
+-  private String getString(Set<String> strings) {
++  private String getString(Collection<String> strings) {
+     StringBuilder sb = new StringBuilder(INITIAL_CAPACITY);
+     boolean first = true;
+     for(String str: strings) {
+diff --git a/hadoop-common-project/hadoop-common/src/test/java/org/apache/hadoop/security/authorize/TestAccessControlList.java b/hadoop-common-project/hadoop-common/src/test/java/org/apache/hadoop/security/authorize/TestAccessControlList.java
+index 32f1fa1..ca7bec4 100644
+--- a/hadoop-common-project/hadoop-common/src/test/java/org/apache/hadoop/security/authorize/TestAccessControlList.java
++++ b/hadoop-common-project/hadoop-common/src/test/java/org/apache/hadoop/security/authorize/TestAccessControlList.java
+@@ -17,27 +17,25 @@
+  */
+ package org.apache.hadoop.security.authorize;
+ 
+-import java.util.Iterator;
+-import java.util.Set;
+-import java.util.List;
+-
+-import org.junit.Test;
+ import static org.junit.Assert.assertEquals;
+ import static org.junit.Assert.assertFalse;
+ import static org.junit.Assert.assertNotNull;
+ import static org.junit.Assert.assertTrue;
+-import org.apache.hadoop.classification.InterfaceAudience;
+-import org.apache.hadoop.classification.InterfaceStability;
++
++import java.util.Collection;
++import java.util.Iterator;
++import java.util.List;
+ 
+ import org.apache.commons.logging.Log;
+ import org.apache.commons.logging.LogFactory;
+-
+-import org.apache.hadoop.fs.CommonConfigurationKeysPublic;
+-import org.apache.hadoop.util.NativeCodeLoader;
++import org.apache.hadoop.classification.InterfaceAudience;
++import org.apache.hadoop.classification.InterfaceStability;
+ import org.apache.hadoop.conf.Configuration;
++import org.apache.hadoop.fs.CommonConfigurationKeysPublic;
+ import org.apache.hadoop.security.Groups;
+ import org.apache.hadoop.security.UserGroupInformation;
+-import org.apache.hadoop.security.authorize.AccessControlList;
++import org.apache.hadoop.util.NativeCodeLoader;
++import org.junit.Test;
+ 
+ @InterfaceAudience.LimitedPrivate({"HDFS", "MapReduce"})
+ @InterfaceStability.Evolving
+@@ -221,8 +219,8 @@ private void validateGetAclString(AccessControlList acl) {
+   @Test
+   public void testAccessControlList() throws Exception {
+     AccessControlList acl;
+-    Set<String> users;
+-    Set<String> groups;
++    Collection<String> users;
++    Collection<String> groups;
+     
+     acl = new AccessControlList("drwho tardis");
+     users = acl.getUsers();
+@@ -273,8 +271,8 @@ public void testAccessControlList() throws Exception {
+   @Test
+   public void testAddRemoveAPI() {
+     AccessControlList acl;
+-    Set<String> users;
+-    Set<String> groups;
++    Collection<String> users;
++    Collection<String> groups;
+     acl = new AccessControlList(" ");
+     assertEquals(0, acl.getUsers().size());
+     assertEquals(0, acl.getGroups().size());

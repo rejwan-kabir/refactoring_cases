@@ -1,0 +1,54 @@
+commit 3fd9f29d56da4adc0c651babb5d2f50627c23195
+Author: Chris Nauroth <cnauroth@apache.org>
+Date:   Sat Feb 1 05:55:20 2014 +0000
+
+    HDFS-5860. Refactor INodeDirectory getDirectoryXFeature methods to use common getFeature helper method. Contributed by Jing Zhao.
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/branches/HDFS-4685@1563374 13f79535-47bb-0310-9956-ffa450edef68
+
+diff --git a/hadoop-hdfs-project/hadoop-hdfs/CHANGES-HDFS-4685.txt b/hadoop-hdfs-project/hadoop-hdfs/CHANGES-HDFS-4685.txt
+index 0399d79..ed4fbd0 100644
+--- a/hadoop-hdfs-project/hadoop-hdfs/CHANGES-HDFS-4685.txt
++++ b/hadoop-hdfs-project/hadoop-hdfs/CHANGES-HDFS-4685.txt
+@@ -56,6 +56,9 @@ HDFS-4685 (Unreleased)
+     HDFS-5858. Refactor common ACL test cases to be run through multiple
+     FileSystem implementations. (cnauroth)
+ 
++    HDFS-5860. Refactor INodeDirectory getDirectoryXFeature methods to use
++    common getFeature helper method. (Jing Zhao via cnauroth)
++
+   OPTIMIZATIONS
+ 
+   BUG FIXES
+diff --git a/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/INodeDirectory.java b/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/INodeDirectory.java
+index a28a79d..c357fea 100644
+--- a/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/INodeDirectory.java
++++ b/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/INodeDirectory.java
+@@ -146,12 +146,7 @@ public void addSpaceConsumed(long nsDelta, long dsDelta, boolean verify)
+    * otherwise, return null.
+    */
+   public final DirectoryWithQuotaFeature getDirectoryWithQuotaFeature() {
+-    for (Feature f : features) {
+-      if (f instanceof DirectoryWithQuotaFeature) {
+-        return (DirectoryWithQuotaFeature)f;
+-      }
+-    }
+-    return null;
++    return getFeature(DirectoryWithQuotaFeature.class);
+   }
+ 
+   /** Is this directory with quota? */
+@@ -186,12 +181,7 @@ protected DirectoryWithSnapshotFeature addSnapshotFeature(
+    * otherwise, return null.
+    */
+   public final DirectoryWithSnapshotFeature getDirectoryWithSnapshotFeature() {
+-    for (Feature f : features) {
+-      if (f instanceof DirectoryWithSnapshotFeature) {
+-        return (DirectoryWithSnapshotFeature) f;
+-      }
+-    }
+-    return null;
++    return getFeature(DirectoryWithSnapshotFeature.class);
+   }
+ 
+   /** Is this file has the snapshot feature? */

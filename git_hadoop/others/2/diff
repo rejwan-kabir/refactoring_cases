@@ -1,0 +1,312 @@
+commit b880b48b35cab46459473e17ee6ba9f750f428a7
+Author: Arpit Agarwal <arp@apache.org>
+Date:   Tue Jun 24 17:51:09 2014 +0000
+
+    HADOOP-10652. Refactor Proxyusers to use AccessControlList. (Contributed by Benoy Antony)
+    
+    git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/trunk@1605145 13f79535-47bb-0310-9956-ffa450edef68
+
+diff --git a/hadoop-common-project/hadoop-common/CHANGES.txt b/hadoop-common-project/hadoop-common/CHANGES.txt
+index 87d7e7e..1290599 100644
+--- a/hadoop-common-project/hadoop-common/CHANGES.txt
++++ b/hadoop-common-project/hadoop-common/CHANGES.txt
+@@ -451,6 +451,9 @@ Release 2.5.0 - UNRELEASED
+     HADOOP-10665. Make Hadoop Authentication Handler loads case in-sensitive
+     (Benoy Antony via vinayakumarb)
+ 
++    HADOOP-10652. Refactor Proxyusers to use AccessControlList. (Benoy
++    Antony via Arpit Agarwal)
++
+   OPTIMIZATIONS
+ 
+   BUG FIXES 
+diff --git a/hadoop-common-project/hadoop-common/src/main/java/org/apache/hadoop/security/authorize/AccessControlList.java b/hadoop-common-project/hadoop-common/src/main/java/org/apache/hadoop/security/authorize/AccessControlList.java
+index 9d328c0..f78602a 100644
+--- a/hadoop-common-project/hadoop-common/src/main/java/org/apache/hadoop/security/authorize/AccessControlList.java
++++ b/hadoop-common-project/hadoop-common/src/main/java/org/apache/hadoop/security/authorize/AccessControlList.java
+@@ -81,29 +81,42 @@ public AccessControlList() {
+    * @param aclString String representation of the ACL
+    */
+   public AccessControlList(String aclString) {
+-    buildACL(aclString);
++    buildACL(aclString.split(" ", 2));
++  }
++  
++  /**
++   * Construct a new ACL from String representation of users and groups
++   * 
++   * The arguments are comma separated lists
++   * 
++   * @param users comma separated list of users
++   * @param groups comma separated list of groups
++   */
++  public AccessControlList(String users, String groups) {
++    buildACL(new String[] {users, groups});
+   }
+ 
+   /**
+-   * Build ACL from the given string, format of the string is
+-   * user1,...,userN group1,...,groupN
++   * Build ACL from the given two Strings.
++   * The Strings contain comma separated values.
+    *
+-   * @param aclString build ACL from this string
++   * @param aclString build ACL from array of Strings
+    */
+-  private void buildACL(String aclString) {
++  private void buildACL(String[] userGroupStrings) {
+     users = new HashSet<String>();
+     groups = new HashSet<String>();
+-    if (isWildCardACLValue(aclString)) {
+-      allAllowed = true;
+-    } else {
+-      allAllowed = false;
+-      String[] userGroupStrings = aclString.split(" ", 2);
+-      
+-      if (userGroupStrings.length >= 1) {
++    for (String aclPart : userGroupStrings) {
++      if (aclPart != null && isWildCardACLValue(aclPart)) {
++        allAllowed = true;
++        break;
++      }
++    }
++    if (!allAllowed) {      
++      if (userGroupStrings.length >= 1 && userGroupStrings[0] != null) {
+         users = StringUtils.getTrimmedStringCollection(userGroupStrings[0]);
+       } 
+       
+-      if (userGroupStrings.length == 2) {
++      if (userGroupStrings.length == 2 && userGroupStrings[1] != null) {
+         groups = StringUtils.getTrimmedStringCollection(userGroupStrings[1]);
+         groupsMapping.cacheGroupsAdd(new LinkedList<String>(groups));
+       }
+@@ -294,7 +307,7 @@ public void write(DataOutput out) throws IOException {
+   @Override
+   public void readFields(DataInput in) throws IOException {
+     String aclString = Text.readString(in);
+-    buildACL(aclString);
++    buildACL(aclString.split(" ", 2));
+   }
+ 
+   /**
+diff --git a/hadoop-common-project/hadoop-common/src/main/java/org/apache/hadoop/security/authorize/DefaultImpersonationProvider.java b/hadoop-common-project/hadoop-common/src/main/java/org/apache/hadoop/security/authorize/DefaultImpersonationProvider.java
+index 46b4a92..f625573 100644
+--- a/hadoop-common-project/hadoop-common/src/main/java/org/apache/hadoop/security/authorize/DefaultImpersonationProvider.java
++++ b/hadoop-common-project/hadoop-common/src/main/java/org/apache/hadoop/security/authorize/DefaultImpersonationProvider.java
+@@ -20,14 +20,13 @@
+ 
+ import java.net.InetAddress;
+ import java.net.UnknownHostException;
+-import java.util.ArrayList;
+ import java.util.Collection;
+ import java.util.HashMap;
+ import java.util.Map;
+ import java.util.Map.Entry;
++import java.util.regex.Pattern;
+ 
+ import org.apache.hadoop.conf.Configuration;
+-import org.apache.hadoop.security.Groups;
+ import org.apache.hadoop.security.UserGroupInformation;
+ import org.apache.hadoop.util.StringUtils;
+ 
+@@ -39,11 +38,14 @@
+   private static final String CONF_GROUPS = ".groups";
+   private static final String CONF_HADOOP_PROXYUSER = "hadoop.proxyuser.";
+   private static final String CONF_HADOOP_PROXYUSER_RE = "hadoop\\.proxyuser\\.";
+-  // list of users, groups and hosts per proxyuser
+-  private Map<String, Collection<String>> proxyUsers = 
+-    new HashMap<String, Collection<String>>(); 
+-  private Map<String, Collection<String>> proxyGroups = 
+-    new HashMap<String, Collection<String>>();
++  private static final String CONF_HADOOP_PROXYUSER_RE_USERS_GROUPS = 
++      CONF_HADOOP_PROXYUSER_RE+"[^.]*(" + Pattern.quote(CONF_USERS) +
++      "|" + Pattern.quote(CONF_GROUPS) + ")";
++  private static final String CONF_HADOOP_PROXYUSER_RE_HOSTS = 
++      CONF_HADOOP_PROXYUSER_RE+"[^.]*"+ Pattern.quote(CONF_HOSTS);
++  // acl and list of hosts per proxyuser
++  private Map<String, AccessControlList> proxyUserAcl = 
++    new HashMap<String, AccessControlList>();
+   private Map<String, Collection<String>> proxyHosts = 
+     new HashMap<String, Collection<String>>();
+   private Configuration conf;
+@@ -52,28 +54,20 @@
+   public void setConf(Configuration conf) {
+     this.conf = conf;
+ 
+-    // get all the new keys for users
+-    String regex = CONF_HADOOP_PROXYUSER_RE+"[^.]*\\"+CONF_USERS;
+-    Map<String,String> allMatchKeys = conf.getValByRegex(regex);
++    // get list of users and groups per proxyuser
++    Map<String,String> allMatchKeys = 
++        conf.getValByRegex(CONF_HADOOP_PROXYUSER_RE_USERS_GROUPS); 
+     for(Entry<String, String> entry : allMatchKeys.entrySet()) {  
+-      Collection<String> users = StringUtils.getTrimmedStringCollection(entry.getValue());
+-      proxyUsers.put(entry.getKey(), users);
+-    }
+-
+-    // get all the new keys for groups
+-    regex = CONF_HADOOP_PROXYUSER_RE+"[^.]*\\"+CONF_GROUPS;
+-    allMatchKeys = conf.getValByRegex(regex);
+-    for(Entry<String, String> entry : allMatchKeys.entrySet()) {
+-      Collection<String> groups = StringUtils.getTrimmedStringCollection(entry.getValue());
+-      proxyGroups.put(entry.getKey(), groups);
+-      //cache the groups. This is needed for NetGroups
+-      Groups.getUserToGroupsMappingService(conf).cacheGroupsAdd(
+-          new ArrayList<String>(groups));
++      String aclKey = getAclKey(entry.getKey());
++      if (!proxyUserAcl.containsKey(aclKey)) {
++        proxyUserAcl.put(aclKey, new AccessControlList(
++            allMatchKeys.get(aclKey + CONF_USERS) ,
++            allMatchKeys.get(aclKey + CONF_GROUPS)));
++      }
+     }
+ 
+-    // now hosts
+-    regex = CONF_HADOOP_PROXYUSER_RE+"[^.]*\\"+CONF_HOSTS;
+-    allMatchKeys = conf.getValByRegex(regex);
++    // get hosts per proxyuser
++    allMatchKeys = conf.getValByRegex(CONF_HADOOP_PROXYUSER_RE_HOSTS);
+     for(Entry<String, String> entry : allMatchKeys.entrySet()) {
+       proxyHosts.put(entry.getKey(),
+           StringUtils.getTrimmedStringCollection(entry.getValue()));
+@@ -88,48 +82,22 @@ public Configuration getConf() {
+   @Override
+   public void authorize(UserGroupInformation user, 
+       String remoteAddress) throws AuthorizationException {
+-
+-    if (user.getRealUser() == null) {
++    
++    UserGroupInformation realUser = user.getRealUser();
++    if (realUser == null) {
+       return;
+     }
+-    boolean userAuthorized = false;
+-    boolean ipAuthorized = false;
+-    UserGroupInformation superUser = user.getRealUser();
+-
+-    Collection<String> allowedUsers = proxyUsers.get(
+-        getProxySuperuserUserConfKey(superUser.getShortUserName()));
+-
+-    if (isWildcardList(allowedUsers)) {
+-      userAuthorized = true;
+-    } else if (allowedUsers != null && !allowedUsers.isEmpty()) {
+-      if (allowedUsers.contains(user.getShortUserName())) {
+-        userAuthorized = true;
+-      }
+-    }
+-
+-    if (!userAuthorized){
+-      Collection<String> allowedUserGroups = proxyGroups.get(
+-          getProxySuperuserGroupConfKey(superUser.getShortUserName()));
+-
+-      if (isWildcardList(allowedUserGroups)) {
+-        userAuthorized = true;
+-      } else if (allowedUserGroups != null && !allowedUserGroups.isEmpty()) {
+-        for (String group : user.getGroupNames()) {
+-          if (allowedUserGroups.contains(group)) {
+-            userAuthorized = true;
+-            break;
+-          }
+-        }
+-      }
+-
+-      if (!userAuthorized) {
+-        throw new AuthorizationException("User: " + superUser.getUserName()
+-            + " is not allowed to impersonate " + user.getUserName());
+-      }
++    
++    AccessControlList acl = proxyUserAcl.get(
++        CONF_HADOOP_PROXYUSER+realUser.getShortUserName());
++    if (acl == null || !acl.isUserAllowed(user)) {
++      throw new AuthorizationException("User: " + realUser.getUserName()
++          + " is not allowed to impersonate " + user.getUserName());
+     }
+ 
++    boolean ipAuthorized = false;
+     Collection<String> ipList = proxyHosts.get(
+-        getProxySuperuserIpConfKey(superUser.getShortUserName()));
++        getProxySuperuserIpConfKey(realUser.getShortUserName()));
+ 
+     if (isWildcardList(ipList)) {
+       ipAuthorized = true;
+@@ -149,9 +117,17 @@ public void authorize(UserGroupInformation user,
+     }
+     if(!ipAuthorized) {
+       throw new AuthorizationException("Unauthorized connection for super-user: "
+-          + superUser.getUserName() + " from IP " + remoteAddress);
++          + realUser.getUserName() + " from IP " + remoteAddress);
+     }
+   }
++  
++  private String getAclKey(String key) {
++    int endIndex = key.lastIndexOf(".");
++    if (endIndex != -1) {
++      return key.substring(0, endIndex); 
++    }
++    return key;
++  }
+ 
+   /**
+    * Return true if the configuration specifies the special configuration value
+@@ -194,13 +170,12 @@ public static String getProxySuperuserIpConfKey(String userName) {
+   }
+ 
+   @VisibleForTesting
+-  public Map<String, Collection<String>> getProxyUsers() {
+-    return proxyUsers;
+-  }
+-
+-  @VisibleForTesting
+   public Map<String, Collection<String>> getProxyGroups() {
+-    return proxyGroups;
++     Map<String,Collection<String>> proxyGroups = new HashMap<String,Collection<String>>();
++     for(Entry<String, AccessControlList> entry : proxyUserAcl.entrySet()) {
++       proxyGroups.put(entry.getKey() + CONF_GROUPS, entry.getValue().getGroups());
++     }
++     return proxyGroups;
+   }
+ 
+   @VisibleForTesting
+diff --git a/hadoop-common-project/hadoop-common/src/test/java/org/apache/hadoop/security/authorize/TestProxyUsers.java b/hadoop-common-project/hadoop-common/src/test/java/org/apache/hadoop/security/authorize/TestProxyUsers.java
+index dcb3e7c..670a512 100644
+--- a/hadoop-common-project/hadoop-common/src/test/java/org/apache/hadoop/security/authorize/TestProxyUsers.java
++++ b/hadoop-common-project/hadoop-common/src/test/java/org/apache/hadoop/security/authorize/TestProxyUsers.java
+@@ -140,7 +140,6 @@ public void testProxyUsers() throws Exception {
+       PROXY_IP);
+     ProxyUsers.refreshSuperUserGroupsConfiguration(conf);
+ 
+-
+     // First try proxying a group that's allowed
+     UserGroupInformation realUserUgi = UserGroupInformation
+         .createRemoteUser(REAL_USER_NAME);
+@@ -362,6 +361,30 @@ public void testProxyUsersWithProviderOverride() throws Exception {
+      // From bad IP
+      assertNotAuthorized(proxyUserUgi, "1.2.3.5");
+    }
++  
++  @Test
++  public void testWithProxyGroupsAndUsersWithSpaces() throws Exception {
++    Configuration conf = new Configuration();
++    conf.set(
++        DefaultImpersonationProvider.getProxySuperuserUserConfKey(REAL_USER_NAME),
++        StringUtils.join(",", Arrays.asList(PROXY_USER_NAME + " ",AUTHORIZED_PROXY_USER_NAME, "ONEMORE")));
++
++    conf.set(
++      DefaultImpersonationProvider.getProxySuperuserGroupConfKey(REAL_USER_NAME),
++      StringUtils.join(",", Arrays.asList(GROUP_NAMES)));
++    
++    conf.set(
++      DefaultImpersonationProvider.getProxySuperuserIpConfKey(REAL_USER_NAME),
++      PROXY_IP);
++    
++    ProxyUsers.refreshSuperUserGroupsConfiguration(conf);
++    
++    Collection<String> groupsToBeProxied = 
++        ProxyUsers.getDefaultImpersonationProvider().getProxyGroups().get(
++        DefaultImpersonationProvider.getProxySuperuserGroupConfKey(REAL_USER_NAME));
++    
++    assertEquals (GROUP_NAMES.length, groupsToBeProxied.size());
++  }
+ 
+ 
+   private void assertNotAuthorized(UserGroupInformation proxyUgi, String host) {
